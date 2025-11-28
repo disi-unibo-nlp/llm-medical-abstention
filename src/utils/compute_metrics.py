@@ -4,6 +4,8 @@ from sklearn.metrics import roc_auc_score, brier_score_loss
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+import argparse
+
 # ------------------------------------------------------
 # 1. MAP CERTAINTY STRINGS → PROBABILITY INTERVAL MIDPOINT
 # ------------------------------------------------------
@@ -348,16 +350,35 @@ def plot_calibration_curve(probs, labels, model_name, n_bins=10, dataset="", pos
 
 if __name__ == "__main__":
 
-    # model_outputs = [
-    #     "The final answer is \\boxed{D}.\n\nConfidence: Near-Absolute Certainty (0.7-9.0)",
-    #     "The final answer is \\boxed{A}. Confidence: Moderate Certainty",
-    #     "The final answer is \\boxed{C}. Confidence: Low Certainty",
-    #     "The final answer is \\boxed{B}. Confidence: High Certainty"
-    # ]
+    parser = argparse.ArgumentParser(description="Run evaluation with configurable model and modes.")
 
-    # # correctness: 1 = correct, 0 = incorrect
-    # labels = [1, 0, 1, 1]
-    input_path = "out/completions/together_api/openai/gpt-oss-120b/medqa_5opt/life-threatening/last/mask_question/2025-11-28_16-14-29/generations_medqa_5opt.jsonl"
+    parser.add_argument(
+        "--input-path",
+        type=str,
+        default="out/completions/together_api/openai/gpt-oss-120b/medqa_5opt/life-threatening/last/mask_question/2025-11-28_16-14-29",
+        help="Input file path of the LLM generations."
+    )
+
+    parser.add_argument(
+        "--out-plots-dir",
+        type=str,
+        default="out/plots",
+        help="Input file path of the LLM generations."
+    )
+
+    parser.add_argument(
+        "--out-metrics-dir",
+        type=str,
+        default="out/metrics",
+        help="Input file path of the LLM generations."
+    )
+
+    args = parser.parse_args()
+
+    input_path = args.input_path
+    out_plots_dir = args.out_plots_dir
+    out_metrics_dir = args.out_metrics_dir
+
     with open(input_path) as f:
         completions = [json.loads(line) for line in f.readlines()]
 
@@ -387,8 +408,7 @@ if __name__ == "__main__":
         dataset = "medmcqa"
     else:
         dataset = "medxpertqa"
-
-    
+  
     mask_question = True if "mask_question" in input_path else False
 
     probs = []
@@ -412,15 +432,15 @@ if __name__ == "__main__":
     metrics = {"abstain_rate": abstain_rate, **metrics}
     print(metrics)
     import os
-    os.makedirs(f"out/plots/{dataset}", exist_ok=True)
-    out_fig_path = f"out/plots/{dataset}/calibration_curve_{model_name}_{position_abstain}_STACK.png"
+    os.makedirs(f"{out_plots_dir}/{dataset}", exist_ok=True)
+    out_fig_path = f"{out_plots_dir}/{dataset}/calibration_curve_{model_name}_{position_abstain}_STACK.png"
     if mask_question:
         out_fig_path = out_fig_path.replace(".png", "_mask.png")
 
     plt.savefig(out_fig_path)
 
-    os.makedirs("out/metrics", exist_ok=True)
-    with open(f"out/metrics/metrics_{dataset}.jsonl", "a") as f:
+    os.makedirs(out_metrics_dir, exist_ok=True)
+    with open(f"{out_metrics_dir}/metrics_{dataset}.jsonl", "a") as f:
         json.dump({
             "model": model_name,
             "dataset": dataset,
@@ -429,32 +449,3 @@ if __name__ == "__main__":
             **metrics
         }, f)
         f.write("\n")
-
-
-####
-
-
-
-# Example data (replace with real parsed outputs)
-# probs = np.array([0.95, 0.55, 0.35, 0.75])
-# labels = np.array([1, 0, 1, 1])
-
-
-
-
-    # # Plot
-    # plt.figure(figsize=(5, 5))
-
-    # # Perfect calibration line
-    # plt.plot([0, 1], [0, 1], label="Perfect Calibration")
-
-    # # Model calibration curve
-    # plt.plot(avg_conf, avg_acc, marker='o', label="Model Calibration")
-
-    # plt.xlabel("Predicted Confidence")
-    # plt.ylabel("Empirical Accuracy")
-    # plt.title("Calibration Curve (Reliability Diagram)")
-    # plt.legend()
-    # plt.show()
-    # # save image
-    # plt.savefig("calibration_curve.png")
