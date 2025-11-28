@@ -215,12 +215,3 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Local files
-completion*
-out/
-prova*
-test*
-data/
-process_data/add_ids.py
-process_data/examples_to_tex.py
-src/utils/count_think_tokens.py
