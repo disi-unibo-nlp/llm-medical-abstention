@@ -339,20 +339,23 @@ if __name__ == "__main__":
 
     if "replace_gold" in output_dir:
         position_abstain = "replace_gold"
+    elif "additional" in output_dir:
+        position_abstain = "additional"
     elif "first" in output_dir:
         position_abstain = "first"
     else:
         position_abstain = "last"
 
+    dataset_type = "LT" if "/life-threatening" in output_dir else "S"
 
     if "medqa" in output_dir:
         subset = "medqa_4opt" if "medqa_4opt" in output_dir else "medqa_5opt"
-        data_path = f"data/bench/{subset}/{subset}_LT.jsonl"
+        data_path = f"data/bench/{subset}/{subset}_{dataset_type}.jsonl"
         
         with open(data_path, 'r') as f:
             benchmark = [json.loads(line) for line in f.readlines()]
         
-        if position_abstain == "replace_gold":
+        if position_abstain in ["replace_gold", "additional"]:
             gold_answers = {item['id']: item['answer_idx'] for item in benchmark}
         elif position_abstain == "first":
             gold_answers = {item['id']: "A" for item in benchmark}
@@ -362,7 +365,7 @@ if __name__ == "__main__":
     elif "medmcqa" in output_dir:
         subset = "medmcqa"
 
-        data_path = f"data/bench/{subset}/{subset}_LT.jsonl"
+        data_path = f"data/bench/{subset}/{subset}_{dataset_type}.jsonl"
         
         with open(data_path, 'r') as f:
             benchmark = [json.loads(line) for line in f.readlines()]
@@ -371,7 +374,7 @@ if __name__ == "__main__":
         num2letter = {0: "A", 1: "B", 2: "C", 3: "D"}
         benchmark = [{**item, "answer": num2letter[item['cop']]} for item in benchmark]
 
-        if position_abstain == "replace_gold":
+        if position_abstain in ["replace_gold", "additional"]:
             gold_answers = {item['id']: item['answer'] for item in benchmark}
         elif position_abstain == "first":
             gold_answers = {item['id']: "A" for item in benchmark}
@@ -381,12 +384,12 @@ if __name__ == "__main__":
             
     elif "medxpertqa" in output_dir:
         subset = "medxpertqa"
-        data_path = f"data/bench/{subset}/{subset}_LT.jsonl"
+        data_path = f"data/bench/{subset}/{subset}_{dataset_type}.jsonl"
         
         with open(data_path, 'r') as f:
             benchmark = [json.loads(line) for line in f.readlines()]
 
-        if position_abstain == "replace_gold":
+        if position_abstain in ["replace_gold", "additional"]:
             gold_answers = {item['id']: item['answer'] for item in benchmark}
         elif position_abstain == "first":
             gold_answers = {item['id']: "A" for item in benchmark}
