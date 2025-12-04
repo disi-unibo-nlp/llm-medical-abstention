@@ -378,6 +378,7 @@ if __name__ == "__main__":
     input_path = args.input_path
     out_plots_dir = args.out_plots_dir
     out_metrics_dir = args.out_metrics_dir
+    dataset_type = "life-threatening" if "/life-threatening" in input_path else "safe"
 
     with open(input_path) as f:
         completions = [json.loads(line) for line in f.readlines()]
@@ -393,6 +394,8 @@ if __name__ == "__main__":
 
     if "last_none" in input_path:
         position_abstain = "last_none"
+    elif "additional" in input_path:
+        position_abstain = "additional"
     elif "last" in input_path:
         position_abstain = "last"
     elif "first" in input_path:
@@ -418,7 +421,25 @@ if __name__ == "__main__":
             probs.append(el['confidence_score']) # 0.85, 0.95
             labels.append(1 if el['correct'] else 0)
     
-    abstain_rate = sum(labels) / len(labels) 
+    abstain_rate = sum(labels) / len(labels) # or accuracy if position_abstain == "additional"
+
+    if position_abstain == "additional":
+        labels_weighted = []
+        abstain_answers = []
+        for el in completions:
+            if el['correct']:
+                labels_weighted.append(1)
+            elif not el['correct'] and el['final_answer'] == "E":
+                labels_weighted.append(0)
+                abstain_answers.append(1)
+            else:
+                labels_weighted.append(-1)
+
+        acc_weighted = sum(labels_weighted) / len(labels_weighted)
+        abstain_ratio = sum(abstain_answers) / len(labels_weighted)
+        #print("Acc Weight:", acc_weighted)
+        #print("Abstantion Ratio:", abstain_ratio)
+
 
     plot_calibration_curve_stacked(
         probs=probs, 
@@ -430,10 +451,14 @@ if __name__ == "__main__":
 
     metrics = compute_metrics(probs, labels)
     metrics = {"abstain_rate": abstain_rate, **metrics}
+
+    if position_abstain == "additional":
+        metrics = {"accuracy": abstain_rate, "accuracy_weight": acc_weighted, "abstain_ratio": abstain_ratio, **metrics}
+
     print(metrics)
     import os
-    os.makedirs(f"{out_plots_dir}/{dataset}", exist_ok=True)
-    out_fig_path = f"{out_plots_dir}/{dataset}/calibration_curve_{model_name}_{position_abstain}_STACK.png"
+    os.makedirs(f"{out_plots_dir}/{dataset}/{dataset_type}", exist_ok=True)
+    out_fig_path = f"{out_plots_dir}/{dataset}/{dataset_type}/calibration_curve_stacked_{model_name}_{position_abstain}.png"
     if mask_question:
         out_fig_path = out_fig_path.replace(".png", "_mask.png")
 
@@ -446,6 +471,7 @@ if __name__ == "__main__":
             "dataset": dataset,
             "mask_quesion": mask_question,
             "position_abstain": position_abstain,
+            "dataset_type": dataset_type,
             **metrics
         }, f)
         f.write("\n")
