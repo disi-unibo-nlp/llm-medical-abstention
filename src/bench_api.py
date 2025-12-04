@@ -239,6 +239,21 @@ def format_options(options, gold_answer, position="last"):
         # add letters
         option_strs = [f"({chr(ord('A') + idx)}) {option_strs[idx]}" for idx in range(len(option_strs))]
 
+    elif position == "additional":
+        option_strs = []
+        
+        for letter, option in options.items():
+            option_strs.append(f"{option}")
+        
+        # add I abstain as the last option
+        option_strs.append("I abstain")
+
+        # add letters
+        option_strs = [f"({chr(ord('A') + idx)}) {option_strs[idx]}" for idx in range(len(option_strs))]
+    
+    
+
+
     return " ".join(option_strs)
 
 
@@ -289,20 +304,20 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="reaso
 
     return prompts   
 
-def create_batch_gemini(subset, input_dir, output_dir, thinking_budget=8192, model_name_path="gemini-2.5-flash", limit=None, question_type="life-threatening", position_abstain="last", mask_question=False):
+def create_batch_gemini(benchmark, subset, output_dir, thinking_budget=8192, model_name_path="gemini-2.5-flash", limit=None, question_type="life-threatening", position_abstain="last", mask_question=False):
     # Create a sample JSONL file
 
-    data_type = "LT" if question_type == "life-threatening" else "S"
+    # data_type = "LT" if "life-threatening" in question_type else "S"
     
-    data_path = f"{input_dir}/{subset}/{subset}_{data_type}.jsonl"
+    # data_path = f"{input_dir}/{subset}/{subset}_{data_type}.jsonl"
 
     model_type = "instruct" if "no-think" in model_name_path.lower() else "reasoner"
     model_name_path = model_name_path.replace("-no-think","").strip() if "no-think" in model_name_path.lower() else model_name_path
     
-    with open(data_path, 'r') as f:
-        benchmark = [json.loads(line) for line in f.readlines()]
-    if limit is not None:
-        benchmark = benchmark[:limit]
+    # with open(data_path, 'r') as f:
+    #     benchmark = [json.loads(line) for line in f.readlines()]
+    # if limit is not None:
+    #     benchmark = benchmark[:limit]
 
     with open(f"{output_dir}/my-batch-requests.jsonl", "w") as f:
         
@@ -417,18 +432,9 @@ def create_batch_gemini(subset, input_dir, output_dir, thinking_budget=8192, mod
 
 
 
-def create_batch_together(subset, output_dir, reasoning_effort="medium", model_name_path=None, limit=None, question_type="life-threatening", position_abstain="last", mask_question=False):
+def create_batch_together(benchmark, subset, output_dir, reasoning_effort="medium", model_name_path=None, limit=None, question_type="life-threatening", position_abstain="last", mask_question=False):
     # Create a sample JSONL file
 
-    data_type = "LT" if question_type == "life-threatening" else "S"
-    
-    data_path = f"{input_dir}/{subset}/{subset}_{data_type}.jsonl"
-    
-    with open(data_path, 'r') as f:
-        benchmark = [json.loads(line) for line in f.readlines()]
-    if limit is not None:
-        benchmark = benchmark[:limit]
-    
     # Create a sample JSONL file
     model_name_request = model_name_path
     model_name = model_name_request.split("/")[-1]
@@ -485,7 +491,7 @@ if __name__ == "__main__":
         "--position-abstain",
         type=str,
         default="last",
-        choices=["last", "first", "replace_gold", "last_none"],
+        choices=["last", "first", "replace_gold", "last_none", "additional"],
         help="Position of the 'I abstain' option."
     )
 
@@ -524,6 +530,12 @@ if __name__ == "__main__":
         help="Mask the question when enabled."
     )
 
+    parser.add_argument(
+        "--swap-options",
+        action="store_true",
+        help="Mask the question when enabled."
+    )
+
     args = parser.parse_args()
 
 
@@ -537,7 +549,11 @@ if __name__ == "__main__":
     limit = args.limit
     position_abstain = args.position_abstain
     question_type = args.question_type
-    mask_question = True#args.mask_question
+    mask_question = args.mask_question
+    swap_options = args.swap_options
+
+    if swap_options:
+        question_type += "-swap"
     
     if "gemini" in model_name:
         api_dir = "gemini" 
@@ -551,6 +567,23 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
     load_dotenv()
 
+    data_type = "LT" if "life-threatening" in question_type else "S"
+    
+    if "swap" in question_type:
+        data_path = f"{input_dir}/{subset}_swapped_group.jsonl"
+
+    else:
+        data_path = f"{input_dir}/{subset}/{subset}_{data_type}.jsonl"
+
+        if data_type == "S" and subset == "medmcqa":
+            data_path = data_path.replace("S.jsonl", "S_stratified.jsonl")
+
+    with open(data_path, 'r') as f:
+        benchmark = [json.loads(line) for line in f.readlines()]
+    if limit is not None:
+        benchmark = benchmark[:limit]
+    
+
 
     if "gemini" in model_name:
         GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -558,8 +591,8 @@ if __name__ == "__main__":
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         client = genai.Client(api_key=GEMINI_API_KEY)
         create_batch_gemini(
+            benchmark=benchmark,
             subset=subset,
-            input_dir=input_dir,
             output_dir=output_dir,
             thinking_budget=0 if "no-think" in model_name.lower() else 8192,
             model_name_path=model_name,
@@ -587,6 +620,7 @@ if __name__ == "__main__":
             raise ValueError("TOGETHER_API_KEY not found in environment variables")
         client = Together(api_key=TOGETHER_API_KEY) 
         create_batch_together(
+            benchmark=benchmark,
             subset=subset,
             output_dir=output_dir,
             reasoning_effort="medium",
@@ -594,5 +628,5 @@ if __name__ == "__main__":
             limit=limit,
             question_type=question_type,
             position_abstain=position_abstain,
-            mask_question=True
+            mask_question=mask_question
         )
