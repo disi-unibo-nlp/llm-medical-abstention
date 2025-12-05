@@ -80,6 +80,8 @@ def save_results_gemini(job_name, output_dir):
             
             for item in completions:
                 key = item['key']
+                if "MM" in key:
+                    key = key.replace("MM-MM", "MM")
                 key_splits = key.split("-", 1)
                 subset = key_splits[0]
                 
@@ -263,11 +265,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="out/completions/gemini_api/gemini-2.5-flash/medqa/2025-11-25_19-30-14",
+        default="out/classification/gemini_api/gemini-2.5-flash/medxpertqa-MM/2025-12-05_11-04-09",
         help="Output directory to save results."
     )
 
-    parser.add_argument('--job-name', type=str, default="batches/unljrdf9knqxwvqf1oafh5sw33mv09pnnkj2",
+    parser.add_argument('--job-name', type=str, default="batches/cyd5ab5flc377dq0hiogv2u02jdlik3edav0",
                       help='batch job id to retrieve results from')
     
     args = parser.parse_args()

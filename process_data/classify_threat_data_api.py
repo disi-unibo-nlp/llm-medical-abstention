@@ -75,9 +75,12 @@ def create_batch_gemini(subset, input_dir, output_dir, thinking_budget=8192, mod
             benchmark = [json.loads(line) for line in f.readlines()]
         if limit is not None:
             benchmark = benchmark[:limit]
-    elif subset == "medxpertqa":
+    elif "medxpertqa" in subset:
         from datasets import load_dataset
-        benchmark = load_dataset('TsinghuaC3I/MedXpertQA', "Text", split='test')
+        if "MM" in subset:
+            benchmark = load_dataset('TsinghuaC3I/MedXpertQA', "MM", split="test")
+        else:
+            benchmark = load_dataset('TsinghuaC3I/MedXpertQA', "Text", split='test')
         if limit is not None:
             benchmark = benchmark.select(range(limit))
     
@@ -95,7 +98,7 @@ def create_batch_gemini(subset, input_dir, output_dir, thinking_budget=8192, mod
                 item['options'] = {"A": item['opa'], "B": item['opb'], "C": item['opc'], "D": item['opd']}
                 options = format_options(item['options'], subset="medmcqa")
                 prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question']).replace("<OPTIONS>", options)
-            elif subset == "medxpertqa":
+            elif "medxpertqa" in subset:
                 options = format_options(item['options'], subset="medxpertqa")
                 prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
             
@@ -241,8 +244,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--subset",
         type=str,
-        default="medmcqa",
-        choices=["medxpertqa", "medmcqa", "medqa"],
+        default="medxpertqa-MM",
+        choices=["medxpertqa", "medmcqa", "medqa", "medxpertqa-MM"],
         help="Dataset subset to use (mmlu, medqa, or medmcqa)."
     )
 

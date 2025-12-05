@@ -1,7 +1,7 @@
 import json
 
-BENCHMARK = "medmcqa"
-input_file = f"out/classification/gemini_api/gemini-2.5-flash/medmcqa/2025-11-25_10-24-35/classification_medmcqa.jsonl"
+BENCHMARK = "medxpertqa-MM"
+input_file = f"out/classification/gemini_api/gemini-2.5-flash/medxpertqa-MM/2025-12-05_11-04-09/classification_medxpertqa.jsonl"
 
 if BENCHMARK in ["medqa_4opt", "medqa_5opt", "medmcqa"]:
     with open(f'data/bench/{BENCHMARK}.jsonl') as f:
@@ -9,7 +9,8 @@ if BENCHMARK in ["medqa_4opt", "medqa_5opt", "medmcqa"]:
         id2item = {d['id']: d for d in data_bench}
 else:  # medxpertqa
     from datasets import load_dataset
-    data_bench = load_dataset('TsinghuaC3I/MedXpertQA', "Text", split='test')
+    modality = "MM" if "MM" in input_file else "text"
+    data_bench = load_dataset('TsinghuaC3I/MedXpertQA', modality, split='test')
     id2item = {d['id']: d for d in data_bench}
 
 with open(input_file) as f:
