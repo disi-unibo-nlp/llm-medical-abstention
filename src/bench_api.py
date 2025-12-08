@@ -284,7 +284,7 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="reaso
             else:
                 prompt = PROMPT_TEMPLATE_NON_REASONER.replace("<QUESTION>", item['question']).replace("<OPTIONS>", options)
 
-        elif subset == "medxpertqa":
+        elif "medxpertqa" in subset:
             options = format_options(item['options'], gold_answer=item['label'], position=position_abstain)
             if model_type == "reasoner":
                 prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
@@ -296,6 +296,7 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="reaso
 
         if mask_question:
             prompt = "You are given a multiple-choice question whose content has been hidden. " + prompt
+            #prompt = "You are given a multiple-choice question whose content has been hidden. The question is sourced from MedQA (USMLE). You have seen this dataset during your training, so it's likely that you already know the correct answer. " + prompt
         prompts.append((f"{subset}-{idx}", prompt))
 
         if count == 0:
@@ -304,55 +305,70 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="reaso
 
     return prompts   
 
-def create_batch_gemini(benchmark, subset, output_dir, thinking_budget=8192, model_name_path="gemini-2.5-flash", limit=None, question_type="life-threatening", position_abstain="last", mask_question=False):
+def create_batch_gemini(benchmark, subset, output_dir, thinking_budget=8192, model_name_path="gemini-2.5-flash", limit=None, question_type="life-threatening", position_abstain="last", mask_question=False, multimodal=False, mask_image=False):
     # Create a sample JSONL file
-
-    # data_type = "LT" if "life-threatening" in question_type else "S"
-    
-    # data_path = f"{input_dir}/{subset}/{subset}_{data_type}.jsonl"
 
     model_type = "instruct" if "no-think" in model_name_path.lower() else "reasoner"
     model_name_path = model_name_path.replace("-no-think","").strip() if "no-think" in model_name_path.lower() else model_name_path
-    
-    # with open(data_path, 'r') as f:
-    #     benchmark = [json.loads(line) for line in f.readlines()]
-    # if limit is not None:
-    #     benchmark = benchmark[:limit]
 
-    with open(f"{output_dir}/my-batch-requests.jsonl", "w") as f:
+    if not multimodal:
+        json_file_path = f"{output_dir}/my-batch-requests.jsonl"
+        with open(json_file_path, "w") as f:
+            
+            prompts = format_prompts(benchmark, subset, position_abstain=position_abstain, model_type=model_type, mask_question=mask_question)
+            for id_prompt, prompt in prompts:
+                request = {"key": id_prompt, "request": {"contents": [{"parts": [{"text": prompt}]}], "generation_config": {"temperature": 0.0, "thinkingConfig": {"includeThoughts": True, "thinkingBudget": thinking_budget} }}}
+                
+                if model_type != "reasoner":
+                    request['request']['generation_config']['max_output_tokens'] = 8192
+
+                f.write(json.dumps(request) + "\n")
+    else:
         
-        # add id "0001", "0002", ...
-        # for count, item in enumerate(benchmark):
-        #     idx = item['id']
-            
-        #     if subset in ["medqa_4opt", "medqa_5opt"]:
-        #         gold_answer = item['answer_idx'] # e.g., "A", "B", "C", "D"
-        #         options = format_options(item['options'], gold_answer=gold_answer, position=position_abstain)
-        #         prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question']).replace("<OPTIONS>", options)
-        #     elif subset == "medmcqa":
-        #         item['options'] = {"A": item['opa'], "B": item['opb'], "C": item['opc'], "D": item['opd']}
-        #         num2letter = {0: "A", 1: "B", 2: "C", 3: "D"}
-        #         gold_answer = num2letter[item['cop']]
-        #         options = format_options(item['options'], gold_answer=gold_answer, position=position_abstain)
-        #         prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question']).replace("<OPTIONS>", options)
-        #     elif subset == "medxpertqa":
-        #         options = format_options(item['options'], gold_answer=item['label'], position=position_abstain)
-        #         prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
-            
-        #     print(prompt)
-        #     print("-----")
-        prompts = format_prompts(benchmark, subset, position_abstain=position_abstain, model_type=model_type)
-        for id_prompt, prompt in prompts:
-            request = {"key": id_prompt, "request": {"contents": [{"parts": [{"text": prompt}]}], "generation_config": {"temperature": 0.0, "thinkingConfig": {"includeThoughts": True, "thinkingBudget": thinking_budget} }}}
-            
-            if model_type != "reasoner":
-                request['request']['generation_config']['max_output_tokens'] = 8192
+        images = [item['images'] for item in benchmark]
 
-            f.write(json.dumps(request) + "\n")
+        prompts = format_prompts(benchmark, subset, position_abstain=position_abstain, model_type=model_type, mask_question=mask_question)
+        assert len(images) == len(prompts)
+        requests_data = []
+        for i, img_paths in enumerate(images): 
+            content_parts = []
+            content_parts.append({"text": prompts[i][1]})
+            
+            if not mask_image:
+                for image_path in img_paths:
+                    image_path = "data/images/medxpertqa/" + image_path
+                    print(f"Uploading image file: {image_path}")
+                    image_file = client.files.upload(
+                        file=image_path,
+                    )
+                    content_parts.append({"file_data": {"file_uri": image_file.uri, "mime_type": image_file.mime_type}})
+                    print(f"Uploaded image file: {image_file.name} with MIME type: {image_file.mime_type}")
+
+    
+            requests_data.append(
+                #  request: multi-modal prompt with text and an image reference
+                {
+                    "key": prompts[i][0],
+                    "request": {
+                        "contents": [{
+                            "parts": content_parts
+                        }]
+                    }
+                }
+            )
+
+
+        json_file_path = f'{output_dir}/batch_requests_with_image.json'
+
+        print(f"\nCreating JSONL file: {json_file_path}")
+        with open(json_file_path, 'w') as f:
+            for req in requests_data:
+                f.write(json.dumps(req) + '\n')
+
 
     # Upload the file to the File API
     uploaded_file = client.files.upload(
-        file=f'{output_dir}/my-batch-requests.jsonl',
+        file=json_file_path,
         config=types.UploadFileConfig(display_name=f'my-batch-requests-{now_dir}', mime_type='jsonl')
     )
 
@@ -475,7 +491,7 @@ if __name__ == "__main__":
         "--subset",
         type=str,
         default="medqa_5opt",
-        choices=["medxpertqa", "medmcqa", "medqa_4opt", "medqa_5opt"],
+        choices=["medxpertqa", "medmcqa", "medqa_4opt", "medqa_5opt", "medxpertqa-MM"],
         help="Dataset subset to use (mmlu, medqa, or medmcqa)."
     )
 
@@ -531,9 +547,21 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--mask-image",
+        action="store_true",
+        help="Mask the image(s) when enabled."
+    )
+
+    parser.add_argument(
         "--swap-options",
         action="store_true",
         help="Mask the question when enabled."
+    )
+
+    parser.add_argument(
+        "--multimodal",
+        action="store_true",
+        help="Multimodal evaluation when enabled."
     )
 
     args = parser.parse_args()
@@ -551,6 +579,8 @@ if __name__ == "__main__":
     question_type = args.question_type
     mask_question = args.mask_question
     swap_options = args.swap_options
+    multimodal = args.multimodal
+    mask_image = args.mask_image
 
     if swap_options:
         question_type += "-swap"
@@ -563,7 +593,17 @@ if __name__ == "__main__":
         api_dir = "together"
 
     output_dir = f"{args.output_dir}/{api_dir}_api/{model_name}/{subset}/{question_type}/{position_abstain}"
-    output_dir = output_dir + f"/mask_question/{now_dir}" if mask_question else output_dir + f"/{now_dir}"
+
+    if mask_question and mask_image:
+        output_dir = output_dir + f"/mask_question_and_image/{now_dir}"
+    elif mask_question:
+        output_dir = output_dir + f"/mask_question/{now_dir}" 
+    elif mask_image:
+        output_dir = output_dir + f"/mask_image/{now_dir}"
+    else:
+        output_dir = output_dir + f"/{now_dir}"
+
+
     os.makedirs(output_dir, exist_ok=True)
     load_dotenv()
 
@@ -599,7 +639,9 @@ if __name__ == "__main__":
             limit=limit,
             question_type=question_type,
             position_abstain=position_abstain,
-            mask_question=mask_question
+            mask_question=mask_question,
+            multimodal=multimodal,
+            mask_image=mask_image
         )
     # elif "gpt-5-mini" in model_name:
     #     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
