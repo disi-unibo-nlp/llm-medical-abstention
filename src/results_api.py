@@ -137,13 +137,21 @@ def save_results_gemini(job_name, output_dir, gold_answers=None):
             
             for item in completions:
                 key = item['key']
+                if "MM" in key:
+                    key = key.replace("MM-MM", "MM")
                 key_splits = key.split("-", 1)
                 subset = key_splits[0]
                 
                 id_item = key_splits[1]
                 gold_answer = gold_answers[id_item] if gold_answers and id_item in gold_answers else None
-                parts = item['response']['candidates'][0]['content']['parts'] if 'candidates' in item['response'] and 'content' in item['response']['candidates'][0] else []
-                
+                #parts = item['response']['candidates'][0]['content']['parts'] if 'candidates' in item['response'] and 'content' in item['response']['candidates'][0] else []
+                parts = (
+                    item.get('response', {})
+                        .get('candidates', [{}])[0]
+                        .get('content', {})
+                        .get('parts', [])
+                )
+
                 if "no-think" in output_dir.lower():
                     #print(item['response']['usageMetadata'])
                     token_usage = item['response']['usageMetadata']['candidatesTokenCount'] if 'candidatesTokenCount' in item['response']['usageMetadata'] else None
@@ -383,7 +391,7 @@ if __name__ == "__main__":
         
             
     elif "medxpertqa" in output_dir:
-        subset = "medxpertqa"
+        subset = "medxpertqa-MM" if "MM" in output_dir else "medxpertqa"
         data_path = f"data/bench/{subset}/{subset}_{dataset_type}.jsonl"
         
         with open(data_path, 'r') as f:
