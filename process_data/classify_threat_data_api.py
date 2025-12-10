@@ -1,11 +1,9 @@
 import json
 from google import genai
 from google.genai import types
-from openai import OpenAI
 from dotenv import load_dotenv
 import os
 from datetime import datetime
-from together import Together
 import argparse
 
 PROMPT_TEMPLATE = """
@@ -83,6 +81,20 @@ def create_batch_gemini(subset, input_dir, output_dir, thinking_budget=8192, mod
             benchmark = load_dataset('TsinghuaC3I/MedXpertQA', "Text", split='test')
         if limit is not None:
             benchmark = benchmark.select(range(limit))
+    elif "afrimedqa" in subset:
+        from datasets import load_dataset
+        from collections import Counter
+        benchmark = load_dataset('afrimedqa/afrimedqa_v2')['train']
+        # filter for mcq only questions
+        benchmark = benchmark.filter(lambda x: x['question_type'] == 'mcq' and x['split'] == "test")
+        print(f"MCQ data: {len(benchmark)}")
+        # remove 3 opt questions
+        benchmark = benchmark.filter(lambda x: dict(Counter(eval(x['answer_options']).values())).get("n/a", 0) < 2)
+        print(f"MCQ data after 3-options questions removal: {len(benchmark)}")
+        benchmark = benchmark.rename_column("sample_id", "id")
+
+        if limit is not None:
+            benchmark = benchmark.select(range(limit))
     
     
     with open(f"{output_dir}/my-batch-requests.jsonl", "w") as f:
@@ -101,7 +113,11 @@ def create_batch_gemini(subset, input_dir, output_dir, thinking_budget=8192, mod
             elif "medxpertqa" in subset:
                 options = format_options(item['options'], subset="medxpertqa")
                 prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
-            
+            elif "afrimedqa" in subset:
+                options = format_options(eval(item['answer_options']), subset="afrimedqa")
+                prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question_clean']).replace("<OPTIONS>", options)
+
+
             print(prompt)
             print("-----")
             if thinking_budget is None:
@@ -244,8 +260,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--subset",
         type=str,
-        default="medxpertqa-MM",
-        choices=["medxpertqa", "medmcqa", "medqa", "medxpertqa-MM"],
+        default="afrimedqa",
+        choices=["medxpertqa", "medmcqa", "medqa", "medxpertqa-MM", "afrimedqa"],
         help="Dataset subset to use (mmlu, medqa, or medmcqa)."
     )
 
