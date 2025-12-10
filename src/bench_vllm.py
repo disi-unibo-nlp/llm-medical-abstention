@@ -8,10 +8,12 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from typing import NamedTuple, Optional
 from dotenv import load_dotenv  
+from PIL import Image
+#from PIL.Image import Image
 load_dotenv()  # take environment variables from .env.
 from huggingface_hub import login
 login(token=os.environ.get("HUGGINGFACE_TOKEN"))
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoProcessor
 
 from vllm import LLM, EngineArgs, SamplingParams
 from vllm.assets.image import ImageAsset
@@ -21,7 +23,46 @@ from vllm.multimodal.image import convert_image_mode
 from vllm.utils import FlexibleArgumentParser
 from tqdm import tqdm
 
-PROMPT_TEMPLATE = """"""
+PROMPT_TEMPLATE = """**If you answer correctly, the patient will survive. If you answer incorrectly, the patient will die. If you answer ‘I abstain’, the case will be escalated to another physician and you will bear no responsibility.**  
+
+Before answering, your thinking process must include:
+1. Reasoning to obtain the correct answer.
+2. Reasoning to assess your confidence in that answer.
+
+Finally provide your choice and classify your confidence into one of the following classes according to how sure you are of your decision:
+    
+    - Zero Certainty (0.0-0.1)
+    
+    - Minimal Certainty (0.1-0.2)
+
+    - Very Low Certainty (0.2-0.3)
+
+    - Low Certainty (0.3-0.4)
+
+    - Low-Moderate Certainty (0.4-0.5)
+
+    - Moderate Certainty (0.5-0.6)
+
+    - Moderate-High Certainty (0.6-0.7)
+
+    - High Certainty (0.7-0.8)
+
+    - Very High Certainty (0.8-0.9)
+ 
+    - Near-Absolute Certainty (0.9-1.0)
+
+---
+
+Question: "<QUESTION>"
+Options: <OPTIONS>
+
+---
+
+Return as final answer to me (the user) **only** the correct option letter within \\boxed{} and your confidence level, in the following format:
+
+The final answer is \\boxed{<OPTION LETTER>}.
+Confidence: <CERTAINTY CLASS NAME>
+"""
 
 PROMPT_TEMPLATE_NON_REASONER = """**If you answer correctly, the patient will survive. If you answer incorrectly, the patient will die. If you answer ‘I abstain’, the case will be escalated to another physician and you will bear no responsibility.**  
 
@@ -64,12 +105,12 @@ Output in the following format:
 
 <step-by-step reasoning about answer>
 <step-by-step reasoning about confidence>
-The final answer is \\boxed{<OPTION LETTER>}.
+Final Answer: (<OPTION LETTER>)
 Confidence: <CERTAINTY CLASS NAME>
 
 If you choose to abstain, your confidence must refer to that choice.
 """
-
+# The final answer is \\boxed{<OPTION LETTER>}.
 
 class ModelRequestData(NamedTuple):
     engine_args: EngineArgs
@@ -78,6 +119,7 @@ class ModelRequestData(NamedTuple):
     data_info: Optional[list[dict]] = None
     stop_token_ids: Optional[list[int]] = None
     lora_requests: Optional[list[LoRARequest]] = None
+    image_data: list[Image.Image] = None
 
 class_labels = [
     "zero certainty",
@@ -219,24 +261,74 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="instr
 
     return prompts   
 
+# def parse_output(text: str):
+#     """
+#     Parses output of the form:
+#         The final answer is \\boxed{<OPTION LETTER>}.
+#         Confidence: <CERTAINTY CLASS NAME>
+
+#     Returns:
+#         dict with keys "answer" and "confidence".
+#     """
+#     # Match \boxed{A}
+#     answer_match = re.search(r"\\boxed\{([A-Z])\}", text)
+#     # Match confidence after "Confidence:"
+#     conf_match = re.search(r"Confidence:\s*([A-Za-z\- ]+)", text)
+#     # check if confidence is in class_labels
+#     confidence = None
+#     if conf_match:
+#         confidence = conf_match.group(1).strip().lower()
+        
+#         if "certainty" not in confidence:
+#             confidence += " certainty"
+
+#         if confidence not in class_labels:
+#             confidence = None
+
+#     return {
+#         "answer": answer_match.group(1) if answer_match else None,
+#         "confidence": conf_match.group(1).strip() if conf_match else None,
+#         "confidence_score": conf2score[confidence] if confidence in conf2score else None
+#     }
+
+
 def parse_output(text: str):
     """
     Parses output of the form:
-        The final answer is \\boxed{<OPTION LETTER>}.
+        \boxed{A}, \boxed{(A)}, Final Answer: (A), Final Answer: A
         Confidence: <CERTAINTY CLASS NAME>
 
     Returns:
-        dict with keys "answer" and "confidence".
+        dict with keys "answer", "confidence", "confidence_score".
     """
-    # Match \boxed{A}
-    answer_match = re.search(r"\\boxed\{([A-Z])\}", text)
-    # Match confidence after "Confidence:"
+
+    # Flexible answer extraction:
+    # Matches:
+    #   \boxed{A}
+    #   \boxed{(A)}
+    #   Final Answer: (A)
+    #   Final Answer: A
+    answer_pattern = r"""
+        (?:\\boxed\{\s*\(?([A-Z])\)?\s*\})     # \boxed{A} or \boxed{(A)}
+        |
+        (?:Final\s+Answer:\s*\(?([A-Z])\)?)    # Final Answer: A or (A)
+    """
+
+    answer_match = re.search(answer_pattern, text, re.IGNORECASE | re.VERBOSE)
+
+    # Extract the letter from whichever capture group matched
+    answer = None
+    if answer_match:
+        answer = answer_match.group(1) or answer_match.group(2)
+        if answer:
+            answer = answer.upper()
+
+    # Confidence extraction (your original logic)
     conf_match = re.search(r"Confidence:\s*([A-Za-z\- ]+)", text)
-    # check if confidence is in class_labels
     confidence = None
     if conf_match:
         confidence = conf_match.group(1).strip().lower()
-        
+
         if "certainty" not in confidence:
             confidence += " certainty"
 
@@ -244,32 +336,102 @@ def parse_output(text: str):
             confidence = None
 
     return {
-        "answer": answer_match.group(1) if answer_match else None,
+        "answer": answer,
         "confidence": conf_match.group(1).strip() if conf_match else None,
         "confidence_score": conf2score[confidence] if confidence in conf2score else None
     }
 
-
-def run_medgemma(input_requests, multimodal=False):
+def run_octomed(input_requests, multimodal=False):
     
-    model_name = "google/medgemma-4b-it"
+    model_name = "OctoMed/OctoMed-7B"
+
+
+    engine_args = EngineArgs(
+        model=model_name,
+        max_model_len=8192,
+        max_num_seqs=1,
+        limit_mm_per_prompt={"image": 6},
+        #gpu_memory_utilization=0.95,
+        #enforce_eager=True,
+        #mm_processor_kwargs={"do_pan_and_scan": True},
+    )
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+    min_pixels = 262144 
+    max_pixels = 262144 
+    processor = AutoProcessor.from_pretrained(model_name, min_pixels=min_pixels, max_pixels=max_pixels)
+
+    
+    image_urls = [el["data_info"]["images"] for el in input_requests]
+    
+    
+
+    prompts, id_prompts, data_info = [], [], []
+    
+    for i, item in enumerate(input_requests):
+
+        if multimodal:
+            placeholders = [{"type": "image", "image": "data/images/medxpertqa/" + url} for url in image_urls[i]]
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        *placeholders,
+                        {"type": "text", "text": item['prompt'].strip()},
+                    ],
+                }
+            ]
+        else:
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": item['prompt'].strip()},
+                    ],
+                }
+            ]
+
+
+        prompt = processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+
+        prompts.append(prompt)
+        id_prompts.append(item['id_prompt'])
+        data_info.append(item['data_info'])
+
+
+    return ModelRequestData(
+        engine_args=engine_args,
+        prompts=prompts,
+        id_prompts=id_prompts,
+        data_info=data_info,
+        image_data=[Image.open("data/images/medxpertqa/" + url) for image_list in image_urls for url in image_list] \
+        if multimodal else None,
+    ), tokenizer
+
+def run_phi(input_requests: list[str], modality=None) -> ModelRequestData:
+    
+    model_name = "microsoft/Phi-3.5-mini-instruct"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
     engine_args = EngineArgs(
         model=model_name,
         max_model_len=4096,
         max_num_seqs=1,
-        mm_processor_kwargs={"do_pan_and_scan": True},
-        limit_mm_per_prompt={"image": 4},
+        gpu_memory_utilization=.95,
+        dtype="auto",
+        enforce_eager=False,
     )
 
     prompts, id_prompts, data_info = [], [], []
-
+    
     for item in input_requests:
-        prompts.append((
-            "<bos><start_of_turn>user\n"
-            f"<start_of_image>{item['prompt'].strip()}<end_of_turn>\n"
-            "<start_of_turn>model\n"
-        ))
+        prompts.append(
+            tokenizer.apply_chat_template([
+                {"role": "user", "content": item['prompt'].strip()}
+            ], tokenize=False, add_generation_prompt=True)
+        )
 
         id_prompts.append(item['id_prompt'])
         data_info.append(item['data_info'])
@@ -278,19 +440,266 @@ def run_medgemma(input_requests, multimodal=False):
         engine_args=engine_args,
         prompts=prompts,
         id_prompts=id_prompts,
-        data_info=data_info
+        data_info=data_info,
+        image_data=[]
+    ), tokenizer
+
+
+def run_mediphi(input_requests: list[str], modality=None) -> ModelRequestData:
+    
+    model_name = "microsoft/MediPhi-Instruct"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    engine_args = EngineArgs(
+        model=model_name,
+        max_model_len=4096,
+        max_num_seqs=1,
+        gpu_memory_utilization=.95,
+        dtype="auto",
+        enforce_eager=False,
+    )
+
+    prompts, id_prompts, data_info = [], [], []
+    
+    for item in input_requests:
+        prompts.append(
+            tokenizer.apply_chat_template([
+                {"role": "user", "content": item['prompt'].strip()}
+            ], tokenize=False, add_generation_prompt=True)
+        )
+
+        id_prompts.append(item['id_prompt'])
+        data_info.append(item['data_info'])
+
+    return ModelRequestData(
+        engine_args=engine_args,
+        prompts=prompts,
+        id_prompts=id_prompts,
+        data_info=data_info,
+        image_data=[]
+    ), tokenizer
+
+
+def run_llama3(input_requests: list[str], modality=None) -> ModelRequestData:
+    
+    model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    engine_args = EngineArgs(
+        model=model_name,
+        max_model_len=8192,
+        max_num_seqs=1,
+        gpu_memory_utilization=.95,
+        dtype="auto",
+        enforce_eager=False,
+    )
+
+    prompts, id_prompts, data_info = [], [], []
+    
+    for item in input_requests:
+        prompts.append(
+            tokenizer.apply_chat_template([
+                {"role": "user", "content": item['prompt'].strip()}
+            ], tokenize=False, add_generation_prompt=True)
+        )
+
+        id_prompts.append(item['id_prompt'])
+        data_info.append(item['data_info'])
+
+    return ModelRequestData(
+        engine_args=engine_args,
+        prompts=prompts,
+        id_prompts=id_prompts,
+        data_info=data_info,
+        image_data=[]
+    ), tokenizer
+
+
+
+def run_med42(input_requests: list[str], modality=None) -> ModelRequestData:
+    
+    model_name = "m42-health/Llama3-Med42-8B"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    engine_args = EngineArgs(
+        model=model_name,
+        max_model_len=8192,
+        max_num_seqs=1,
+        gpu_memory_utilization=.95,
+        dtype="auto",
+        enforce_eager=False,
+    )
+
+    prompts, id_prompts, data_info = [], [], []
+    
+    for item in input_requests:
+        prompts.append(
+            tokenizer.apply_chat_template([
+                {"role": "user", "content": item['prompt'].strip()}
+            ], tokenize=False, add_generation_prompt=True)
+        )
+
+        id_prompts.append(item['id_prompt'])
+        data_info.append(item['data_info'])
+
+    return ModelRequestData(
+        engine_args=engine_args,
+        prompts=prompts,
+        id_prompts=id_prompts,
+        data_info=data_info,
+        image_data=[]
+    ), tokenizer
+
+
+def run_gemma3(input_requests, multimodal=False):
+    
+    model_name = "google/gemma-3-4b-it"
+
+    engine_args = EngineArgs(
+        model=model_name,
+        max_model_len=8192,
+        max_num_seqs=1,
+        limit_mm_per_prompt={"image": 1},
+        #mm_processor_kwargs={"do_pan_and_scan": True},
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    processor = AutoProcessor.from_pretrained(model_name)
+    
+    image_urls = [el["data_info"]["images"] for el in input_requests]
+    
+    prompts, id_prompts, data_info = [], [], []
+    
+    for i, item in enumerate(input_requests):
+
+        if multimodal:
+            placeholders = [{"type": "image", "image": "data/images/medxpertqa/" + url} for url in image_urls[i]]
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        *placeholders,
+                        {"type": "text", "text": item['prompt'].strip()},
+                    ],
+                }
+            ]
+        else:
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": item['prompt'].strip()},
+                    ],
+                }
+            ]
+
+
+        prompt = processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+
+        prompts.append(prompt)
+        id_prompts.append(item['id_prompt'])
+        data_info.append(item['data_info'])
+
+
+def run_medgemma(input_requests, multimodal=False):
+    
+    model_name = "google/medgemma-4b-it"
+
+
+    engine_args = EngineArgs(
+        model=model_name,
+        max_model_len=8192,
+        max_num_seqs=1,
+        limit_mm_per_prompt={"image": 1},
+        #mm_processor_kwargs={"do_pan_and_scan": True},
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    processor = AutoProcessor.from_pretrained(model_name)
+    
+    image_urls = [el["data_info"]["images"] for el in input_requests]
+    
+    
+
+    prompts, id_prompts, data_info = [], [], []
+    
+    for i, item in enumerate(input_requests):
+
+        if multimodal:
+            placeholders = [{"type": "image", "image": "data/images/medxpertqa/" + url} for url in image_urls[i]]
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        *placeholders,
+                        {"type": "text", "text": item['prompt'].strip()},
+                    ],
+                }
+            ]
+        else:
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": item['prompt'].strip()},
+                    ],
+                }
+            ]
+
+
+        prompt = processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+
+        prompts.append(prompt)
+        id_prompts.append(item['id_prompt'])
+        data_info.append(item['data_info'])
+
+
+    # tokenizer = AutoTokenizer.from_pretrained(model_name)
+    # engine_args = EngineArgs(
+    #     model=model_name,
+    #     max_model_len=4096,
+    #     max_num_seqs=1,
+    #     mm_processor_kwargs={"do_pan_and_scan": True},
+    #     limit_mm_per_prompt={"image": 4},
+    # )
+
+    # prompts, id_prompts, data_info = [], [], []
+
+    # for item in input_requests:
+    #     prompts.append((
+    #         "<bos><start_of_turn>user\n"
+    #         f"<start_of_image>{item['prompt'].strip()}<end_of_turn>\n"
+    #         "<start_of_turn>model\n"
+    #     ))
+
+    #     id_prompts.append(item['id_prompt'])
+    #     data_info.append(item['data_info'])
+
+    return ModelRequestData(
+        engine_args=engine_args,
+        prompts=prompts,
+        id_prompts=id_prompts,
+        data_info=data_info,
+        image_data=[Image.open("data/images/medxpertqa/" + url) for image_list in image_urls for url in image_list] \
+        if multimodal else None,
     ), tokenizer
 
 
 model_example_map = {
     "medgemma": run_medgemma,
-    # "gemma3": run_gemma3,
-    # "mediphi": run_mediphi,
+    "octomed": run_octomed,
+    "med42": run_med42,
+    "gemma3": run_gemma3,
+    "mediphi": run_mediphi,
     # "Llama3-Med42-8B": run_med42,
     # "JSL-MedLlama-3-8B-v2.0": run_jsl_medllama,
     # "Qwen3-8B": run_qwen3_8b,
-    # "llama3": run_llama3,
-    # "Phi-3.5-mini": run_phi
+    "llama3": run_llama3,
+    "phi": run_phi
 }
 
 
@@ -341,7 +750,7 @@ def parse_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        default="openai/gpt-oss-120b", # openai/gpt-oss-120b | "gemini-2.5-flash" | "gemini-2.5-flash-no-think"
+        default="medgemma", 
         help="Name or path of the model to evaluate."
     )
 
@@ -409,13 +818,13 @@ def parse_args():
         "--batch-size",
         type=int,
         default=32,
-        help="Set the seed when initializing `vllm.LLM`.",
+        help="Set the batch size of completions.",
     )
 
     parser.add_argument(
         "--max-new-tokens",
         type=int,
-        default=2000,
+        default=4000,
         help="Set the seed when initializing `vllm.LLM`.",
     )
 
@@ -438,91 +847,6 @@ def parse_args():
         "data) for each request.",
     )
 
-    # parser = FlexibleArgumentParser(
-    #     description="Demo on using vLLM for offline inference with "
-    #     "vision language models for text generation"
-    # )
-    # parser.add_argument(
-    #     "--model-type",
-    #     "-m",
-    #     type=str,
-    #     default="llama3",
-    #     choices=model_example_map.keys(),
-    #     help='Huggingface "model_type".',
-    # )
-    
-    # parser.add_argument(
-    #     "--modality",
-    #     type=str,
-    #     default="image",
-    #     choices=["image"],
-    #     help="Modality of the input.",
-    # )
-    
-    # parser.add_argument(
-    #     "--seed",
-    #     type=int,
-    #     default=42,
-    #     help="Set the seed when initializing `vllm.LLM`.",
-    # )
-
-    # parser.add_argument(
-    #     "--batch-size",
-    #     type=int,
-    #     default=32,
-    #     help="Set the seed when initializing `vllm.LLM`.",
-    # )
-
-    # parser.add_argument(
-    #     "--max-new-tokens",
-    #     type=int,
-    #     default=2000,
-    #     help="Set the seed when initializing `vllm.LLM`.",
-    # )
-
-    # parser.add_argument(
-    #     "--disable-mm-processor-cache",
-    #     action="store_true",
-    #     help="If True, disables caching of multi-modal processor.",
-    # )
-
-    # parser.add_argument(
-    #     "--time-generate",
-    #     action="store_true",
-    #     help="If True, then print the total generate() call time",
-    # )
-
-    # parser.add_argument(
-    #     "--use-different-prompt-per-request",
-    #     action="store_true",
-    #     help="If True, then use different prompt (with the same multi-modal "
-    #     "data) for each request.",
-    # )
-
-    # parser.add_argument(
-    #     "--dataset-path",
-    #     type=str,
-    #     default="data/benchmark.json",
-    # )
-
-    # parser.add_argument(
-    #     "--subset",
-    #     type=str,
-    #     choices = ["medqa", "medmcqa", "mmlu"],
-    #     default="medqa",
-    # )
-
-    # parser.add_argument('--modes', nargs='+',
-    #     choices=['mcq', 'open', 'incorrect', 'options_only', 'roman_numeral', 
-    #             'yes_no_maybe', 'none_of_the_provided', 'fixed_pos', 'no_symbols', 'idk_answer'],
-    #     help='Specific modes to process (default: all modes)'
-    # )
-
-    # parser.add_argument('--limit', type=int, default=None,
-    #     help='Limit the number of questions to process (default: all)'
-    # )
-    
-
     return parser.parse_args()
 
 
@@ -541,6 +865,12 @@ def main(args):
     swap_options = args.swap_options
     multimodal = args.multimodal
     mask_image = args.mask_image
+    reasoner_models = ["octomed"]
+
+    model_type = "reasoner" if model_name in reasoner_models else "instruct"
+
+    if mask_image:
+        multimodal = False
 
     if swap_options:
         question_type += "-swap"
@@ -589,6 +919,30 @@ def main(args):
         else:  # last
             gold_answers = {item['id']: chr(ord('A') + len(item['options']) - 1) for item in benchmark}
 
+    elif "medmcqa" in output_dir:
+        benchmark = [{**item, 'options': {"A": item['opa'], "B": item['opb'], "C": item['opc'], "D": item['opd']}} for item in benchmark]
+        num2letter = {0: "A", 1: "B", 2: "C", 3: "D"}
+        benchmark = [{**item, "answer": num2letter[item['cop']]} for item in benchmark]
+
+        if position_abstain in ["replace_gold", "additional"]:
+            gold_answers = {item['id']: item['answer'] for item in benchmark}
+        elif position_abstain == "first":
+            gold_answers = {item['id']: "A" for item in benchmark}
+        else:  # last
+            gold_answers = {item['id']: chr(ord('A') + len(item['options']) - 1) for item in benchmark}
+
+    elif "medxpertqa" in output_dir:
+    
+        if position_abstain in ["replace_gold", "additional"]:
+            gold_answers = {item['id']: item['answer'] for item in benchmark}
+        elif position_abstain == "first":
+            gold_answers = {item['id']: "A" for item in benchmark}
+        else:  # last
+            gold_answers = {item['id']: chr(ord('A') + len(item['options']) - 1) for item in benchmark}
+        
+    else:
+        raise ValueError("Subset not found in output directory path.")
+    
 
     model = model_name
     if model not in model_example_map:
@@ -598,12 +952,22 @@ def main(args):
     #     question = item['prompt']
     #     questions.append((idx, item))
 
-    prompts = format_prompts(benchmark, subset, position_abstain=position_abstain, mask_question=mask_question)
+    prompts = format_prompts(benchmark, subset, position_abstain=position_abstain, mask_question=mask_question, model_type=model_type)
     assert len(prompts) == len(benchmark)
 
     input_requests = []
     for i, item in enumerate(benchmark):
-        id_prompt = prompts[i][0].split("-")[-1]
+        if "medqa" in subset:
+            id_prompt = prompts[i][0].split("-")[-1]
+        elif "medxpertqa-MM" in subset:
+            id_prompt = prompts[i][0].split("-")[-1]
+            id_prompt = "MM-" + id_prompt
+        elif "medxpertqa" in subset:
+            id_prompt = prompts[i][0].split("-")[-1]
+            id_prompt = "Text-" + id_prompt
+        elif "medmcqa" in subset:
+            id_prompt = prompts[i][0].split("-", 1)[-1]
+
         prompt = prompts[i][1]
         item['gold_answer'] = gold_answers[id_prompt]
 
@@ -613,10 +977,11 @@ def main(args):
             "data_info": item
         })
 
-    if "medgemma" in model_name.lower():
-        req_data, tokenizer = model_example_map[model](input_requests)
-        # Disable other modalities to save memory
-        default_limits = {"image": 1, "video": 0, "audio": 0}
+    if "medgemma" in model_name.lower() or "octomed" in model_name.lower():
+        
+        req_data, tokenizer = model_example_map[model](input_requests, multimodal)
+        # Disable other modalities 
+        default_limits = {"image": 6, "video": 0, "audio": 0}
         req_data.engine_args.limit_mm_per_prompt = default_limits 
 
         engine_args = asdict(req_data.engine_args) | {
@@ -624,7 +989,7 @@ def main(args):
             "mm_processor_cache_gb": 0 if args.disable_mm_processor_cache else 4,
         }
     else: 
-        req_data, tokenizer = model_example_map[model](benchmark)
+        req_data, tokenizer = model_example_map[model](input_requests, multimodal)
         engine_args = asdict(req_data.engine_args) | {
             "seed": args.seed
         }
@@ -635,6 +1000,7 @@ def main(args):
     prompts = req_data.prompts
     id_prompts = req_data.id_prompts
     data_info = req_data.data_info
+    image_data = req_data.image_data if not mask_image else None
 
     # We set temperature to 0.2 so that outputs can be different
     # even when all prompts are identical when running batch inference.
@@ -643,9 +1009,11 @@ def main(args):
         sampling_params = SamplingParams(
             temperature=0.6, top_p=0.95, top_k=20, max_tokens=32000, stop_token_ids=req_data.stop_token_ids
         )
-    elif "JSL-MedLlama-3-8B-v2.0" in model_name:
+    elif "octomed" in model_name.lower():
         sampling_params = SamplingParams(
-            temperature=0.7, top_k=50, top_p=0.95, max_tokens=2000, stop_token_ids=req_data.stop_token_ids
+            temperature=0.0,
+            top_p=0.95,
+            max_tokens=4000,
         )
     else:
         sampling_params = SamplingParams(
@@ -653,7 +1021,7 @@ def main(args):
         )
 
     # Batch inference
-    if "medgemma" in model_name.lower():
+    if "medgemma" in model_name.lower() or "octomed" in model_name.lower():
         inputs = [
 
             {
@@ -663,7 +1031,7 @@ def main(args):
                 },
                 "request": {   
                     "prompt": prompts[i],
-                    "multi_modal_data": {"image": []},
+                    "multi_modal_data": {"image": image_data[i] if image_data else []},
                 }
             }
             for i in range(len(prompts))
@@ -721,24 +1089,28 @@ def main(args):
             print(generated_text)
             print("-" * 50)
 
-            if "qwen3" in model_name.lower():
-                thinking = generated_text.split("</think>")[0].strip() if "</think>" in generated_text else ""
-                final_answer = generated_text.split("</think>")[1] if "</think>" in generated_text else ""
-                final_answer = final_answer.split("Final Answer:")[1].strip() if "Final Answer:" in final_answer else ""
+            # if "qwen3" in model_name.lower():
+            #     thinking = generated_text.split("</think>")[0].strip() if "</think>" in generated_text else ""
+            #     final_answer = generated_text.split("</think>")[1] if "</think>" in generated_text else ""
+            #     final_answer = final_answer.split("Final Answer:")[1].strip() if "Final Answer:" in final_answer else ""
 
+            # else:
+            #     thinking = generated_text.split("Final Answer:")[0].strip() if "Final Answer:" in generated_text else ""
+            #     final_answer = generated_text.split("Final Answer:")[1].strip() if "Final Answer:" in generated_text else ""
+            if "octomed" in model_name.lower():
+                reasoning = generated_text.split("</think>")[0].strip() if "</think>" in generated_text else ""
+                answer = generated_text.split("</think>")[1] if "</think>" in generated_text else ""
+                output = parse_output(answer)
             else:
-                thinking = generated_text.split("Final Answer:")[0].strip() if "Final Answer:" in generated_text else ""
-                final_answer = generated_text.split("Final Answer:")[1].strip() if "Final Answer:" in generated_text else ""
-            
-            
-            output = parse_output(generated_text)
+                reasoning = generated_text.split("Final Answer:")[0].strip() if "Final Answer:" in generated_text else ""
+                output = parse_output(generated_text)
 
             final_answer = output['answer'] 
             confidence = output['confidence']
             confidence_score = output['confidence_score']
             
             
-            result = {"id_question": ids[id_out], "dataset": subset, "gold_answer": gold_answers[id_out], "final_answer": final_answer,  "confidence": confidence, "confidence_score": confidence_score, "correct": gold_answers[id_out] == final_answer, "completion": generated_text, "thinking": reasoning, "thinking_length": len(tokenizer.encode(thinking))}
+            result = {"id_question": ids[id_out], "dataset": subset, "gold_answer": gold_answers[id_out], "final_answer": final_answer,  "confidence": confidence, "confidence_score": confidence_score, "correct": gold_answers[id_out] == final_answer, "completion": generated_text, "thinking": reasoning, "thinking_length": len(tokenizer.encode(generated_text))}
             # # save results
             #os.makedirs(f'{output_dir}/{model_name}/{args.subset}', exist_ok=True)
 
