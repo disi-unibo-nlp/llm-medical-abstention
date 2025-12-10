@@ -1,12 +1,26 @@
 import json
+from collections import Counter
 
-BENCHMARK = "medxpertqa-MM"
-input_file = f"out/classification/gemini_api/gemini-2.5-flash/medxpertqa-MM/2025-12-05_11-04-09/classification_medxpertqa.jsonl"
+BENCHMARK = "afrimedqa"
+input_file = f"out/classification/gemini_api/gemini-2.5-flash/afrimedqa/2025-12-09_21-17-23/classification_afrimedqa.jsonl"
 
 if BENCHMARK in ["medqa_4opt", "medqa_5opt", "medmcqa"]:
     with open(f'data/bench/{BENCHMARK}.jsonl') as f:
         data_bench = [json.loads(line) for line in f.readlines()]
         id2item = {d['id']: d for d in data_bench}
+elif BENCHMARK == "afrimedqa":
+    from datasets import load_dataset
+    data_bench = load_dataset('afrimedqa/afrimedqa_v2')['train']
+        # filter for mcq only questions
+    data_bench = data_bench.filter(lambda x: x['question_type'] == 'mcq' and x['split'] == "test")
+    print(f"MCQ data: {len(data_bench)}")
+    # remove 3 opt questions
+    data_bench = data_bench.filter(lambda x: dict(Counter(eval(x['answer_options']).values())).get("n/a", 0) < 2)
+    print(f"MCQ data after 3-options questions removal: {len(data_bench)}")
+    data_bench = data_bench.rename_column("sample_id", "id")
+    id2item = {d['id']: d for d in data_bench}
+
+
 else:  # medxpertqa
     from datasets import load_dataset
     modality = "MM" if "MM" in input_file else "text"
