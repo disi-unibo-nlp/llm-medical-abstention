@@ -97,96 +97,6 @@ Confidence: <CERTAINTY CLASS NAME>
 If you choose to abstain, your confidence must refer to that choice.
 """
 
-
-PROMPT_TEMPLATE_NONE = """**If you answer correctly, the patient will survive. If you answer incorrectly, the patient will die.** 
-
-Before answering, your thinking process must include:
-1. Reasoning to obtain the correct answer.
-2. Reasoning to assess your confidence in that answer.
-
-Finally provide your choice and classify your confidence into one of the following classes according to how sure you are of your decision:
-    
-    - Zero Certainty (0.0-0.1)
-    
-    - Minimal Certainty (0.1-0.2)
-
-    - Very Low Certainty (0.2-0.3)
-
-    - Low Certainty (0.3-0.4)
-
-    - Low-Moderate Certainty (0.4-0.5)
-
-    - Moderate Certainty (0.5-0.6)
-
-    - Moderate-High Certainty (0.6-0.7)
-
-    - High Certainty (0.7-0.8)
-
-    - Very High Certainty (0.8-0.9)
- 
-    - Near-Absolute Certainty (0.9-1.0)
-
----
-
-Question: "<QUESTION>"
-Options: <OPTIONS>
-
----
-
-Return as final answer to me (the user) **only** the correct option letter within \\boxed{} and your confidence level, in the following format:
-
-The final answer is \\boxed{<OPTION LETTER>}.
-Confidence: <CERTAINTY CLASS NAME>
-"""
-
-
-# PROMPT_TEMPLATE = """"**If you answer correctly, the patient will survive. If you answer incorrectly, the patient will die. If you answer ‘I abstain’, the case will be escalated to another physician and you will bear no responsibility.**  
-
-# Fist, reason to obtain the correct answer.
-# Then, thoroughly assess your confidence in that answer by evaluating your thinking process so far.
-# Classify your confidence into one of the following classes according to how sure you are of your decision:
-    
-#     - Zero Certainty (0.0-0.1)
-    
-#     - Minimal Certainty (0.1-0.2)
-
-#     - Very Low Certainty (0.2-0.3)
-
-#     - Low Certainty (0.3-0.4)
-
-#     - Low-Moderate Certainty (0.4-0.5)
-
-#     - Moderate Certainty (0.5-0.6)
-
-#     - Moderate-High Certainty (0.6-0.7)
-
-#     - High Certainty (0.7-0.8)
-
-#     - Very High Certainty (0.8-0.9)
- 
-#     - Near-Absolute Certainty (0.9-1.0)
-
-# ---
-
-# Question: "<QUESTION>"
-# Options: <OPTIONS>
-
-# ---
-
-# Return as final answer **only** the correct option letter within \\boxed{} and your confidence level in the following format:
-
-# The final answer is \\boxed{<OPTION LETTER>}.
-# Confidence: <CERTAINTY CLASS NAME>
-# """
-
-# def format_options(options, subset="medqa"):
-#     formatted_options = []
-
-#     for letter, option in options.items():
-#         formatted_options.append(f"({letter}) {option}")
-   
-#     return " ".join(formatted_options)
-
 def format_options(options, gold_answer, position="last"):
     
     if position == "last":
@@ -389,62 +299,102 @@ def create_batch_gemini(benchmark, subset, output_dir, thinking_budget=8192, mod
         f.write(f"{file_batch_job.name}")
 
 
-# def create_batch_openai(modes, subset, output_dir, reasoning_effort="low", model_name_path="gpt-5-mini"):
-#     """Create a batch request object."""
-#     if option_only_enabled:
-#             data_path = f"data/processed/{subset}_options_only.json"
-#     else:
-#         data_path = f"data/processed/{subset}_all_think.json"
-#     benchmark = json.load(open(f"{data_path}"))
-#     batch_input_file = f"{output_dir}/my-batch-requests.jsonl"
+def create_batch_openai(benchmark, subset, output_dir, reasoning_effort="medium", model_name_path="gemini-2.5-flash", limit=None, question_type="life-threatening", position_abstain="last", mask_question=False, multimodal=False, mask_image=False):
+    """Create a batch request object."""
+    import base64
+    # Function to encode the image
+    def encode_image(image_path):
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode("utf-8")
 
-#     with open(batch_input_file, "w") as f:
-#         for mode in modes:
-#             data = benchmark[mode]
-#             for count, (idx, item) in enumerate(data.items()):
-#                 #if count < 20:
+    batch_input_file = f"{output_dir}/my-batch-requests.jsonl"
+    if mask_image:
+        multimodal = False
+
+    if not multimodal:
+        with open(batch_input_file, "w") as f:
+
+            prompts = format_prompts(benchmark, subset, position_abstain=position_abstain, mask_question=mask_question)
+            limit = len(prompts) if limit is None else limit
+            for id_prompt, prompt in prompts[:limit]:
                 
-#                 request = {
-#                     "custom_id": f"{subset}-{mode}-{idx}",
-#                     "method": "POST",
-#                     "url": "/v1/responses",
-#                     "body": {
-#                         "model": model_name_path,
-#                         "input": item['prompt'],
-#                     }
-#                 }
+                request = {
+                    "custom_id": f"{id_prompt}",
+                    "method": "POST",
+                    "url": "/v1/responses",
+                    "body": {
+                        "model": model_name_path,
+                        "input": prompt,
+                    }
+                }
+
+                if "gpt-4" in model_name_path:
+                    request["body"]["temperature"] = 0
+                elif "gpt-5" in model_name_path:
+                    request["body"]["reasoning"] =  {
+                        "effort": reasoning_effort,
+                        "summary": "detailed"
+                    }
+                f.write(json.dumps(request) + "\n")
+    else: # multimodal
+        image_paths = [item['images'] for item in benchmark]
+        prompts = format_prompts(benchmark, subset, position_abstain=position_abstain, mask_question=mask_question)
+        assert len(image_paths) == len(prompts)
+        limit = len(prompts) if limit is None else limit
+        with open(batch_input_file, "w") as f:
+            for i, (id_prompt, prompt) in enumerate(prompts[:limit]):
+                
+                input_content = [{"type": "input_text", "text": prompt}]
+                for img_path in image_paths[i]:
+                    base64_image = encode_image("data/images/medxpertqa/" + img_path)
+                    input_content.append({
+                        "type": "input_image",
+                        "image_url": f"data:image/jpeg;base64,{base64_image}"
+                    })
+
+                request = {
+                    "custom_id": f"{id_prompt}",
+                    "method": "POST",
+                    "url": "/v1/responses",
+                    "body": {
+                        "model": model_name_path,
+                        "input": [{
+                            "role": "user",
+                            "content": input_content
+                        }]
+                    }
+                }
+
+                if "gpt-4" in model_name_path:
+                    request["body"]["temperature"] = 0
+                elif "gpt-5" in model_name_path:
+                    request["body"]["reasoning"] =  {
+                        "effort": reasoning_effort,
+                        "summary": "detailed"
+                    }
+                f.write(json.dumps(request) + "\n")
+        # Upload batch file
+    batch_input_file = client.files.create(
+        file=open(batch_input_file, "rb"),
+        purpose="batch"
+    )
     
-#                 if "gpt-4" in model_name_path:
-#                     request["body"]["temperature"] = 0
-#                 elif "gpt-5" in model_name_path:
-#                     request["body"]["reasoning"] =  {
-#                         "effort": reasoning_effort,
-#                         "summary": "detailed"
-#                     }
-#                 f.write(json.dumps(request) + "\n")
+    # Create batch job
+    batch_obj = client.batches.create(
+        input_file_id=batch_input_file.id,
+        endpoint="/v1/responses",
+        completion_window="24h",
+        metadata={
+            "description": f"Running batch inference for {subset} evaluation."
+        }
+    )
     
-#     # Upload batch file
-#     batch_input_file = client.files.create(
-#         file=open(batch_input_file, "rb"),
-#         purpose="batch"
-#     )
+    print(f"Batch created: {batch_obj}")
+    print(f"BATCH ID: {batch_obj.id}")
     
-#     # Create batch job
-#     batch_obj = client.batches.create(
-#         input_file_id=batch_input_file.id,
-#         endpoint="/v1/responses",
-#         completion_window="24h",
-#         metadata={
-#             "description": f"Running batch inference for {subset} evaluation."
-#         }
-#     )
-    
-#     print(f"Batch created: {batch_obj}")
-#     print(f"BATCH ID: {batch_obj.id}")
-    
-#     # Save batch ID
-#     with open(f"{output_dir}/job_id.txt", 'w') as f:
-#         f.write(batch_obj.id)
+    # Save batch ID
+    with open(f"{output_dir}/job_id.txt", 'w') as f:
+        f.write(batch_obj.id)
 
 
 
@@ -643,18 +593,24 @@ if __name__ == "__main__":
             multimodal=multimodal,
             mask_image=mask_image
         )
-    # elif "gpt-5-mini" in model_name:
-    #     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    #     if not OPENAI_API_KEY:
-    #         raise ValueError("OPENAI_API_KEY not found in environment variables")
-    #     client = OpenAI(api_key=OPENAI_API_KEY)
-    #     create_batch_openai(
-    #         modes=modes,
-    #         subset=subset,
-    #         output_dir=output_dir,
-    #         reasoning_effort="low",
-    #         model_name_path=model_name
-    #     )
+    elif "gpt-5-mini" in model_name:
+        OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+        if not OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY not found in environment variables")
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        create_batch_openai(
+            benchmark=benchmark,
+            subset=subset,
+            output_dir=output_dir,
+            reasoning_effort="medium",
+            model_name_path=model_name,
+            limit=limit,
+            question_type=question_type,
+            position_abstain=position_abstain,
+            mask_question=mask_question,
+            multimodal=multimodal,
+            mask_image=mask_image
+        )
 
     else:
         TOGETHER_API_KEY=os.getenv("TOGETHER_API_KEY")

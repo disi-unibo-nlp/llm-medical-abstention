@@ -2,7 +2,7 @@ import json
 import argparse
 from google import genai
 from google.genai import types
-# from openai import OpenAI
+from openai import OpenAI
 from together import Together
 import time
 from dotenv import load_dotenv
@@ -199,70 +199,85 @@ def save_results_gemini(job_name, output_dir, gold_answers=None):
             print(f"Error: {batch_job.error}")
 
 
-# def save_results_openai(job_name, output_dir):
+def save_results_openai(job_name, output_dir):
 
-#     #print(client.batches.retrieve(args.batch_id))
-#     response = client.batches.retrieve(job_name)
-#     is_safe = False
-#     if response.status =='completed':
-#         print("INFERENCE COMPLETED!")
-#         print(response)
+    #print(client.batches.retrieve(args.batch_id))
+    response = client.batches.retrieve(job_name)
+    is_safe = False
+    if response.status =='completed':
+        print("INFERENCE COMPLETED!")
+        print(response)
 
-#         if response.error_file_id:
-#             print("ERROR FILE ID: ", response.error_file_id)
-#             file_response = client.files.content(response.error_file_id)
-#             for line in file_response.text.splitlines():
-#                 print(line)
-#         elif response.output_file_id:
-#             is_safe = True
-#             print("OUTPUT FILE ID: ", response.output_file_id)
-#             file_response = client.files.content(response.output_file_id)
-#             out_file_id = response.output_file_id
+        if response.error_file_id:
+            print("ERROR FILE ID: ", response.error_file_id)
+            file_response = client.files.content(response.error_file_id)
+            for line in file_response.text.splitlines():
+                print(line)
+        elif response.output_file_id:
+            is_safe = True
+            print("OUTPUT FILE ID: ", response.output_file_id)
+            file_response = client.files.content(response.output_file_id)
+            out_file_id = response.output_file_id
         
-#             for line in file_response.text.splitlines():
-#                 print(line)
-#             print("Saving results...")
-#             with open(f'{output_dir}/raw_completions.jsonl', 'w') as f:
-#                 for line in file_response.text.splitlines():
-#                     json.dump(json.loads(line), f, ensure_ascii=False)
-#                     f.write('\n')
-#             print("Done!")
+            for line in file_response.text.splitlines():
+                print(line)
+            print("Saving results...")
+            with open(f'{output_dir}/raw_completions.jsonl', 'w') as f:
+                for line in file_response.text.splitlines():
+                    json.dump(json.loads(line), f, ensure_ascii=False)
+                    f.write('\n')
+            print("Done!")
 
-#         if is_safe:
-#             print("Parsing results...")
-#             with open(f'{output_dir}/raw_completions.jsonl', 'r') as f:
-#                 completions = [json.loads(line) for line in f.readlines()]
+        if is_safe:
+            print("Parsing results...")
+            with open(f'{output_dir}/raw_completions.jsonl', 'r') as f:
+                completions = [json.loads(line) for line in f.readlines()]
             
             
-#             for item in completions:
+            for k, item in enumerate(completions):
 
-#                 key_splits = item['custom_id'].split("-", 2)
-#                 dataset_item = key_splits[0]
-#                 mode_item = key_splits[1]
-#                 if mode_item not in dataset_per_mode:
-#                     continue
-#                 id_item = key_splits[2]
-#                 gold_answer = dataset_per_mode[mode_item][id_item]['answer'] if mode_item != "yes_no_maybe" else "Yes"
-#                 usage_info = item['response']['body']['usage']['output_tokens_details']['reasoning_tokens']
-#                 #result = json.loads(line)
-#                 output = item['response']['body']['output']
-#                 final_answer = ""
-#                 thinking = ""
-#                 for out in output:
-#                     if out['type'] == "reasoning":
-#                         thinking = out['summary'][0]['text'] if out['summary'] else ""
-#                     elif out['type'] == "message":
-#                         completion = out['content'][0]['text'] if out['content'] else ""
-#                         final_answer = parse_final_answer(completion, mode_item, model_name="openai")
-#                 print(f'{output_dir}/generations_{mode_item}.jsonl')
-#                 with open(f'{output_dir}/generations_{mode_item}.jsonl', 'a') as f:
-#                     json.dump({"id_question": id_item, "dataset": dataset_item, "mode": mode_item, "gold_answer": gold_answer, "final_answer": final_answer, "completion": completion, "thinking": thinking, "thinking_length": usage_info}, f)
-#                     f.write("\n")
-#             print("Done!")
+                key = item['custom_id']
+                if "MM" in key:
+                    key = key.replace("MM-MM", "MM")
+                key_splits = key.split("-", 1)
+                subset = key_splits[0]
+                
+                id_item = key_splits[1]
+                gold_answer = gold_answers[id_item] if gold_answers and id_item in gold_answers else None
+                usage_info = item['response']['body']['usage']['output_tokens_details']['reasoning_tokens']
+                #result = json.loads(line)
+                output_request = item['response']['body']['output']
+                final_answer = ""
+                thinking = ""
+                confidence = ""
+                confidence_score = ""
+                completion = ""
+                for out in output_request:
+                    
+                    if out['type'] == "reasoning":
+                        
+                        if out['summary']:
+                            for sum in out['summary']:
+                                thinking += (sum['text'] + "\n\n")
+                    elif out['type'] == "message":
+                        completion = out['content'][0]['text'] if out['content'] else ""
+                        #print(k, completion)
+                        output = parse_output(completion)
+                        print(k, output)
+                        final_answer = output['answer'] 
+                        confidence = output['confidence']
+                        confidence_score = output['confidence_score']
+                    
+                        with open(f"{output_dir}/generations_{subset}.jsonl", "a") as f:
+                            json.dump({"id_question": id_item, "dataset": subset,  "gold_answer": gold_answer, "final_answer": final_answer, "confidence": confidence, "confidence_score": confidence_score, "correct": gold_answer == final_answer, "completion": completion.strip(), "thinking": thinking.strip(), "thinking_tokens": usage_info}, f)
+                            f.write("\n")
+            print("Done!")
 
-#     else:
-#         print("BATCH STILL PROCESSING...")
-#         print(f"STATUS: {response.status}")
+    else:
+        print("BATCH STILL PROCESSING...")
+        print(f"STATUS: {response.status}")
+        if response.status == "failed":
+            print(response)
 
 def save_results_together(job_name, output_dir, gold_answers=None):
     batch_stat = client.batches.get_batch(job_name)
@@ -421,15 +436,15 @@ if __name__ == "__main__":
         save_results_together(job_name, output_dir, gold_answers=gold_answers)
         print("Done!")
 
-    # elif "openai" in output_dir:
-    #     OPENAI_KEY = os.getenv("OPENAI_KEY")
-    #     client = OpenAI(api_key=OPENAI_KEY)
-    #     print("Processing results...")
-    #     save_results_openai(job_name, output_dir)
-    #     print("output_dir:", output_dir)
-    #     print("Done!")
+    elif "openai" in output_dir:
+        OPENAI_KEY = os.getenv("OPENAI_KEY")
+        client = OpenAI(api_key=OPENAI_KEY)
+        print("Processing results...")
+        save_results_openai(job_name, output_dir)
+        print("output_dir:", output_dir)
+        print("Done!")
 
-    # else:
-    #     print("Unknown model in output directory path.")
+    else:
+        print("Unknown model in output directory path.")
 
    
