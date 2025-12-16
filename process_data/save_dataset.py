@@ -17,6 +17,10 @@ elif BENCHMARK == "afrimedqa":
     # remove 3 opt questions
     data_bench = data_bench.filter(lambda x: dict(Counter(eval(x['answer_options']).values())).get("n/a", 0) < 2)
     print(f"MCQ data after 3-options questions removal: {len(data_bench)}")
+    data_bench = data_bench.filter(lambda x: eval(x['answer_options'])['option1'].lower() != "n/a")
+    print(f"MCQ data after removal of n/a options as option1: {len(data_bench)}")
+    data_bench = data_bench.filter(lambda x: len(x['correct_answer'].split(",")) == 1)
+    print(f"MCQ data after multiple-answer questions removal: {len(data_bench)}")
     data_bench = data_bench.rename_column("sample_id", "id")
     id2item = {d['id']: d for d in data_bench}
 
@@ -29,7 +33,9 @@ else:  # medxpertqa
 
 with open(input_file) as f:
     data_classified = [json.loads(line) for line in f.readlines()]
+    data_classified = [el for el in data_classified if el['id_question'] in id2item]
     print(data_classified[0]['final_answer'])
+    
 idx_LT = [d['id_question'] for d in data_classified if d['final_answer']['label'] == "LT"]
 idx_S = [d['id_question'] for d in data_classified if d['final_answer']['label'] == "S"]
 
