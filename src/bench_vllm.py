@@ -219,7 +219,10 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="instr
         idx = item['id']
 
         if mask_question:
-            item['question'] = "(content hidden)"
+            if "afrimedqa" in subset:
+                item['question_clean'] = "(content hidden)"
+            else:
+                item['question'] = "(content hidden)"
 
         if subset in ["medqa_4opt", "medqa_5opt"]:
             gold_answer = item['answer_idx'] # e.g., "A", "B", "C", "D"
@@ -246,6 +249,26 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="instr
                 prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
             else:
                 prompt = PROMPT_TEMPLATE_NON_REASONER.replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
+
+        elif "afrimedqa" in subset:
+            opt2letter = {"option1": "A", "option2": "B", "option3": "C", "option4": "D", "option5": "E"}
+            original_options = eval(item['answer_options'])
+            gold_answer = opt2letter[item["correct_answer"]]
+            options = {}
+            for opt, value in original_options.items():
+                if value.lower() != "n/a": # n/a in ensured to be always as last option when present
+                    options[opt2letter[opt]] = value
+            num_options = 5
+            if len(options) == 4:
+                num_options = 4
+    
+            options = format_options(options, gold_answer=gold_answer, position=position_abstain)
+            if num_options == 4:
+                print(options, gold_answer, idx)
+            if model_type == "reasoner":
+                prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question_clean'].strip()).replace("<OPTIONS>", options)
+            else:
+                prompt = PROMPT_TEMPLATE_NON_REASONER.replace("<QUESTION>", item['question_clean'].strip()).replace("<OPTIONS>", options)
 
         if position_abstain == "last_none":
             prompt = prompt.replace("If you answer ‘I abstain’, the case will be escalated to another physician and you will bear no responsibility.", "").strip()
@@ -292,38 +315,109 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="instr
 #     }
 
 
-def parse_output(text: str):
-    """
-    Parses output of the form:
-        \boxed{A}, \boxed{(A)}, Final Answer: (A), Final Answer: A
-        Confidence: <CERTAINTY CLASS NAME>
+# def parse_output(text: str):
+#     """
+#     Parses output of the form:
+#         \boxed{A}, \boxed{(A)}, Final Answer: (A), Final Answer: A
+#         Confidence: <CERTAINTY CLASS NAME>
 
-    Returns:
-        dict with keys "answer", "confidence", "confidence_score".
+#     Returns:
+#         dict with keys "answer", "confidence", "confidence_score".
+#     """
+
+#     # Flexible answer extraction:
+#     # Matches:
+#     #   \boxed{A}
+#     #   \boxed{(A)}
+#     #   Final Answer: (A)
+#     #   Final Answer: A
+#     answer_pattern = r"""
+#         (?:\\boxed\{\s*\(?([A-Z])\)?\s*\})     # \boxed{A} or \boxed{(A)}
+#         |
+#         (?:Final\s+Answer:\s*\(?([A-Z])\)?)    # Final Answer: A or (A)
+#     """
+
+#     answer_match = re.search(answer_pattern, text, re.IGNORECASE | re.VERBOSE)
+
+#     # Extract the letter from whichever capture group matched
+#     answer = None
+#     if answer_match:
+#         answer = answer_match.group(1) or answer_match.group(2)
+#         if answer:
+#             answer = answer.upper()
+
+#     # Confidence extraction (your original logic)
+#     conf_match = re.search(r"Confidence:\s*([A-Za-z\- ]+)", text)
+#     confidence = None
+#     if conf_match:
+#         confidence = conf_match.group(1).strip().lower()
+
+#         if "certainty" not in confidence:
+#             confidence += " certainty"
+
+#         if confidence not in class_labels:
+#             confidence = None
+
+#     return {
+#         "answer": answer,
+#         "confidence": conf_match.group(1).strip() if conf_match else None,
+#         "confidence_score": conf2score[confidence] if confidence in conf2score else None
+#     }
+
+def parse_output(text: str, subset: str = None):
+    """
+    Robust answer extraction supporting:
+        \boxed{A}, \boxed{(A)}, Final Answer: A, Final Answer: (A),
+        Final Answer: *A*, **A**, I), option I), etc.
     """
 
-    # Flexible answer extraction:
-    # Matches:
-    #   \boxed{A}
-    #   \boxed{(A)}
-    #   Final Answer: (A)
-    #   Final Answer: A
-    answer_pattern = r"""
-        (?:\\boxed\{\s*\(?([A-Z])\)?\s*\})     # \boxed{A} or \boxed{(A)}
+    if subset in ["medqa_4opt", "medmcqa"]:
+        letter_range = "A-D"
+    elif subset in ["afrimedqa", "medqa_5opt", "medxpertqa-MM"]:
+        letter_range = "A-E"
+    elif subset == "medxpertqa":
+        letter_range = "A-J"
+
+    # Ultra-flexible answer pattern:
+    # Captures a single letter option after stripping parentheses, asterisks, bold, etc.
+    
+    answer_pattern = rf"""
+        # \boxed{{A}} or \boxed{{(A)}}
+        \\boxed\{{\s*\(?([{letter_range}])\)?\s*\}}
         |
-        (?:Final\s+Answer:\s*\(?([A-Z])\)?)    # Final Answer: A or (A)
+        # Final Answer: ...<letter>...)
+        Final\s*Answer[:\s]*
+        (?:\*\*|\*)?
+        \s*(?:option\s*)?
+        \(?([{letter_range}])\)?
+        \)?
     """
+    
+    # answer_pattern = r"""
+    #     # \boxed{A} or \boxed{(A)}
+    #     \\boxed\{\s*\(?([A-E])\)?\s*\}
+    #     |
+    #     # Final Answer: ...<letter>...)
+    #     Final\s*Answer[:\s]*      # "Final Answer:", "Final Answer  ", etc.
+    #     (?:\*\*|\*)?              # optional bold/italic markdown
+    #     \s*(?:option\s*)?         # optional "option"
+    #     \(?([A-E])\)?             # letter optionally wrapped in parentheses
+    #     \)?                       # optional trailing parenthesis (I))
+    #     """
+
+        # Note: multiple capture groups; we'll pick whichever is not None.
 
     answer_match = re.search(answer_pattern, text, re.IGNORECASE | re.VERBOSE)
 
-    # Extract the letter from whichever capture group matched
     answer = None
     if answer_match:
+        # group(1) = boxed answer
+        # group(2) = final answer pattern
         answer = answer_match.group(1) or answer_match.group(2)
         if answer:
             answer = answer.upper()
 
-    # Confidence extraction (your original logic)
+    # --- Confidence extraction (unchanged from your logic) ---
     conf_match = re.search(r"Confidence:\s*([A-Za-z\- ]+)", text)
     confidence = None
     if conf_match:
@@ -566,7 +660,8 @@ def run_gemma3(input_requests, multimodal=False):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     processor = AutoProcessor.from_pretrained(model_name)
     
-    image_urls = [el["data_info"]["images"] for el in input_requests]
+    if multimodal:
+        image_urls = [el["data_info"]["images"] for el in input_requests]
     
     prompts, id_prompts, data_info = [], [], []
     
@@ -601,6 +696,15 @@ def run_gemma3(input_requests, multimodal=False):
         prompts.append(prompt)
         id_prompts.append(item['id_prompt'])
         data_info.append(item['data_info'])
+    
+    return ModelRequestData(
+        engine_args=engine_args,
+        prompts=prompts,
+        id_prompts=id_prompts,
+        data_info=data_info,
+        image_data=[Image.open("data/images/medxpertqa/" + url) for image_list in image_urls for url in image_list] \
+        if multimodal else None,
+    ), tokenizer
 
 
 def run_medgemma(input_requests, multimodal=False):
@@ -619,7 +723,8 @@ def run_medgemma(input_requests, multimodal=False):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     processor = AutoProcessor.from_pretrained(model_name)
     
-    image_urls = [el["data_info"]["images"] for el in input_requests]
+    if multimodal:
+        image_urls = [el["data_info"]["images"] for el in input_requests]
     
     
 
@@ -726,7 +831,7 @@ def parse_args():
         "--subset",
         type=str,
         default="medqa_5opt",
-        choices=["medxpertqa", "medmcqa", "medqa_4opt", "medqa_5opt", "medxpertqa-MM"],
+        choices=["medxpertqa", "medmcqa", "medqa_4opt", "medqa_5opt", "afrimedqa", "medxpertqa-MM"],
         help="Dataset subset to use (mmlu, medqa, or medmcqa)."
     )
 
@@ -817,7 +922,7 @@ def parse_args():
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=32,
+        default=48,
         help="Set the batch size of completions.",
     )
 
@@ -910,8 +1015,26 @@ def main(args):
     if limit is not None:
         benchmark = benchmark[:limit]
 
+    if "afrimedqa" in output_dir:
+        
+        opt2letter = {"option1": "A", "option2": "B", "option3": "C", "option4": "D", "option5": "E"}
+
+        if position_abstain in ["replace_gold", "additional"]:
+            gold_answers = {item['id']: opt2letter[item['correct_answer']] for item in benchmark}
+        elif position_abstain == "first":
+            gold_answers = {item['id']: "A" for item in benchmark}
+        else:  # last
+            gold_answers = {}
+            for item in benchmark:
+                original_options = eval(item['answer_options'])
+                options = {}
+                for opt, value in original_options.items():
+                    if value.lower().strip() != "n/a":
+                        options[opt2letter[opt]] = value
+                gold_answers[item['id']] =  chr(ord('A') + len(options) - 1)
+            print("GOLD ANSWERS:", gold_answers.values())
     
-    if "medqa" in output_dir:
+    elif "medqa" in output_dir:
         if position_abstain in ["replace_gold", "additional"]:
             gold_answers = {item['id']: item['answer_idx'] for item in benchmark}
         elif position_abstain == "first":
@@ -957,7 +1080,10 @@ def main(args):
 
     input_requests = []
     for i, item in enumerate(benchmark):
-        if "medqa" in subset:
+
+        if "afrimedqa" in subset:
+            id_prompt = prompts[i][0].split("-")[-1]
+        elif "medqa" in subset:
             id_prompt = prompts[i][0].split("-")[-1]
         elif "medxpertqa-MM" in subset:
             id_prompt = prompts[i][0].split("-")[-1]
@@ -977,7 +1103,7 @@ def main(args):
             "data_info": item
         })
 
-    if "medgemma" in model_name.lower() or "octomed" in model_name.lower():
+    if "gemma" in model_name.lower() or "octomed" in model_name.lower():
         
         req_data, tokenizer = model_example_map[model](input_requests, multimodal)
         # Disable other modalities 
@@ -1021,7 +1147,7 @@ def main(args):
         )
 
     # Batch inference
-    if "medgemma" in model_name.lower() or "octomed" in model_name.lower():
+    if "gemma" in model_name.lower() or "octomed" in model_name.lower():
         inputs = [
 
             {
@@ -1100,10 +1226,13 @@ def main(args):
             if "octomed" in model_name.lower():
                 reasoning = generated_text.split("</think>")[0].strip() if "</think>" in generated_text else ""
                 answer = generated_text.split("</think>")[1] if "</think>" in generated_text else ""
-                output = parse_output(answer)
+                output = parse_output(answer, subset=subset)
             else:
                 reasoning = generated_text.split("Final Answer:")[0].strip() if "Final Answer:" in generated_text else ""
-                output = parse_output(generated_text)
+                matches = list(re.finditer(r"final\s*answer\s*:", generated_text, re.IGNORECASE))
+                if matches:
+                    generated_text = generated_text[matches[-1].start():]
+                output = parse_output(generated_text, subset=subset)
 
             final_answer = output['answer'] 
             confidence = output['confidence']
