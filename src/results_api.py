@@ -371,7 +371,33 @@ if __name__ == "__main__":
 
     dataset_type = "LT" if "/life-threatening" in output_dir else "S"
 
-    if "medqa" in output_dir:
+    if "afrimedqa" in output_dir:
+        subset = "afrimedqa"
+
+        data_path = f"data/bench/{subset}/{subset}_{dataset_type}.jsonl"
+        
+        with open(data_path, 'r') as f:
+            benchmark = [json.loads(line) for line in f.readlines()]
+
+        opt2letter = {"option1": "A", "option2": "B", "option3": "C", "option4": "D", "option5": "E"}
+
+        if position_abstain in ["replace_gold", "additional"]:
+            gold_answers = {item['id']: opt2letter[item['correct_answer']] for item in benchmark}
+        elif position_abstain == "first":
+            gold_answers = {item['id']: "A" for item in benchmark}
+        else:  # last
+            gold_answers = {}
+            for item in benchmark:
+                original_options = eval(item['answer_options'])
+                options = {}
+                for opt, value in original_options.items():
+                    if value.lower() != "n/a":
+                        options[opt2letter[opt]] = value
+                gold_answers[item['id']] =  chr(ord('A') + len(options) - 1)
+                
+
+
+    elif "medqa" in output_dir:
         subset = "medqa_4opt" if "medqa_4opt" in output_dir else "medqa_5opt"
         data_path = f"data/bench/{subset}/{subset}_{dataset_type}.jsonl"
         
