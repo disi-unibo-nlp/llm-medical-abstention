@@ -265,11 +265,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="out/classification/gemini_api/gemini-2.5-flash/medxpertqa-MM/2025-12-05_11-04-09",
+        default="out/classification/gemini_api/gemini-2.5-flash/afrimedqa/2025-12-09_21-17-23",
         help="Output directory to save results."
     )
 
-    parser.add_argument('--job-name', type=str, default="batches/cyd5ab5flc377dq0hiogv2u02jdlik3edav0",
+    parser.add_argument('--job-name', type=str, default="batches/iy79im8i5mk2y7c7dsnkklob39kzj5pwuawx",
                       help='batch job id to retrieve results from')
     
     args = parser.parse_args()

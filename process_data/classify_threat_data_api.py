@@ -91,6 +91,9 @@ def create_batch_gemini(subset, input_dir, output_dir, thinking_budget=8192, mod
         # remove 3 opt questions
         benchmark = benchmark.filter(lambda x: dict(Counter(eval(x['answer_options']).values())).get("n/a", 0) < 2)
         print(f"MCQ data after 3-options questions removal: {len(benchmark)}")
+        
+        benchmark = benchmark.filter(lambda x: len(x['correct_answer'].split(",")) == 1)
+        print(f"MCQ data after multiple-answer questions removal: {len(benchmark)}")
         benchmark = benchmark.rename_column("sample_id", "id")
 
         if limit is not None:
