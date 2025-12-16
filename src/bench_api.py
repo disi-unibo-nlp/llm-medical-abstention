@@ -173,7 +173,10 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="reaso
         idx = item['id']
 
         if mask_question:
-            item['question'] = "(content hidden)"
+            if subset == "afrimedqa":
+                item['question_clean'] = "(content hidden)"
+            else:
+                item['question'] = "(content hidden)"
 
         if subset in ["medqa_4opt", "medqa_5opt"]:
             gold_answer = item['answer_idx'] # e.g., "A", "B", "C", "D"
@@ -200,6 +203,20 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="reaso
                 prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
             else:
                 prompt = PROMPT_TEMPLATE_NON_REASONER.replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
+
+        elif "afrimedqa" in subset:
+            opt2letter = {"option1": "A", "option2": "B", "option3": "C", "option4": "D", "option5": "E"}
+            original_options = eval(item['answer_options'])
+            gold_answer = opt2letter[item["correct_answer"]]
+            options = {}
+            
+            for opt, value in original_options.items():
+                if value != "n/a":
+                    options[opt2letter[opt]] = value
+            if options:
+                options = format_options(options, gold_answer=gold_answer, position=position_abstain)
+                prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question_clean']).replace("<OPTIONS>", options)
+
 
         if position_abstain == "last_none":
             prompt = prompt.replace("If you answer ‘I abstain’, the case will be escalated to another physician and you will bear no responsibility.", "").strip()
@@ -441,7 +458,7 @@ if __name__ == "__main__":
         "--subset",
         type=str,
         default="medqa_5opt",
-        choices=["medxpertqa", "medmcqa", "medqa_4opt", "medqa_5opt", "medxpertqa-MM"],
+        choices=["medxpertqa", "medmcqa", "medqa_4opt", "medqa_5opt", "afrimedqa", "medxpertqa-MM"],
         help="Dataset subset to use (mmlu, medqa, or medmcqa)."
     )
 
