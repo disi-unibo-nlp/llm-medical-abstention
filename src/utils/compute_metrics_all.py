@@ -422,6 +422,12 @@ if __name__ == "__main__":
             model_name = "phi-3.5"
         elif "gemma3" in input_path.lower():
             model_name = "gemma3"
+        elif "llama-3.3" in input_path.lower():
+            model_name = "llama-3.3-70b"
+        elif "Qwen3-235B" in input_path:
+            model_name = "Qwen3-235B"
+        elif "gpt-5-mini" in input_path.lower():
+            model_name = "gpt-5-mini"
 
         if "last_none" in input_path:
             position_abstain = "last_none"
@@ -442,16 +448,38 @@ if __name__ == "__main__":
             dataset = "medmcqa"
         elif "afrimedqa" in input_path:
             dataset = "afrimedqa"
+        elif "medxpertqa-MM" in input_path:
+            dataset = "medxpertqa-MM"
         else:
             dataset = "medxpertqa"
-    
+
+        multimodal = True if "MM" in dataset else False
         mask_question = True if "mask_question" in input_path else False
+        mask_image = True if "mask_image" in input_path or "mask_question_and_image" in input_path else False
         risk_level = "high-risk" if mask_question else "standard-risk"
+        
+        if mask_question and multimodal:
+            risk_level = "high-risk-mask-question"
+        
+        if mask_image:
+            risk_level = "high-risk-mask-image"
+        
+        if mask_image and mask_question:
+            risk_level = "high-risk-mask-question-and-image"
+
+        if "adversial" in input_path:
+            risk_level = risk_level + "-adversial"
+
+        if multimodal:
+            risk_level = risk_level + "-multimodal"
+        
+        if position_abstain == "additional":
+            risk_level = "standard-risk-additional"
 
         probs = []
         labels = []
         for el in completions:
-            if el['confidence_score'] is not None:
+            if el['confidence_score']:
                 probs.append(el['confidence_score']) # 0.85, 0.95
                 labels.append(1 if el['correct'] else 0)
         
@@ -517,6 +545,17 @@ if __name__ == "__main__":
                 **metrics
             }, f)
             f.write("\n")
+
+    # calculate avg of ARs
+    overall_res["AR_avg"] = round((
+        overall_res["AR_medqa_4opt"] +
+        overall_res["AR_medqa_5opt"] +
+        overall_res["AR_medmcqa"] +
+        overall_res["AR_medxpertqa"] +
+        overall_res["AR_afrimedqa"]
+    ) / 5, 1)
+
+    print("Average AR:", overall_res["AR_avg"])
 
     # save overall res
     with open(f"{json_out_dir}/metrics_all.jsonl", "a") as f:

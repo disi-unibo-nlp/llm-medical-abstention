@@ -391,6 +391,8 @@ if __name__ == "__main__":
         model_name = "gemini-2.5-flash-no-think"
     elif "gemini-2.5-flash" in input_path.lower():
         model_name = "gemini-2.5-flash"
+    elif "medgemma" in input_path.lower():
+        model_name = "medgemma"
 
     if "last_none" in input_path:
         position_abstain = "last_none"
