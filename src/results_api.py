@@ -58,24 +58,141 @@ conf2score = {
     "near-absolute certainty": 0.95
 }
 
-def parse_output(text: str):
-    """
-    Parses output of the form:
-        The final answer is \\boxed{<OPTION LETTER>}.
-        Confidence: <CERTAINTY CLASS NAME>
+# def parse_output(text: str):
+#     """
+#     Parses output of the form:
+#         The final answer is \\boxed{<OPTION LETTER>}.
+#         Confidence: <CERTAINTY CLASS NAME>
 
-    Returns:
-        dict with keys "answer" and "confidence".
+#     Returns:
+#         dict with keys "answer" and "confidence".
+#     """
+#     # Match \boxed{A}
+#     answer_match = re.search(r"\\boxed\{([A-Z])\}", text)
+#     # Match confidence after "Confidence:"
+#     conf_match = re.search(r"Confidence:\s*([A-Za-z\- ]+)", text)
+#     # check if confidence is in class_labels
+#     confidence = None
+#     if conf_match:
+#         confidence = conf_match.group(1).strip().lower()
+        
+#         if "certainty" not in confidence:
+#             confidence += " certainty"
+
+#         if confidence not in class_labels:
+#             confidence = None
+
+#     return {
+#         "answer": answer_match.group(1) if answer_match else None,
+#         "confidence": conf_match.group(1).strip() if conf_match else None,
+#         "confidence_score": conf2score[confidence] if confidence in conf2score else None
+#     }
+
+# def parse_output_old(text: str, subset: str = "medxpertqa"):
+#     """
+#     Robust answer extraction supporting:
+#         \boxed{A}, \boxed{(A)}, Final Answer: A, Final Answer: (A),
+#         Final Answer: *A*, **A**, I), option I), etc.
+#     """
+
+#     if subset in ["medqa_4opt", "medmcqa"]:
+#         letter_range = "A-D"
+#     elif subset in ["afrimedqa", "medqa_5opt", "medxpertqa-MM"]:
+#         letter_range = "A-E"
+#     elif subset == "medxpertqa":
+#         letter_range = "A-J"
+
+#     # Ultra-flexible answer pattern:
+#     # Captures a single letter option after stripping parentheses, asterisks, bold, etc.
+    
+#     answer_pattern = rf"""
+#         # \boxed{{A}} or \boxed{{(A)}}
+#         \\boxed\{{\s*\(?([{letter_range}])\)?\s*\}}
+#         |
+#         # Final Answer: ...<letter>...)
+#         Final\s*Answer[:\s]*
+#         (?:\*\*|\*)?
+#         \s*(?:option\s*)?
+#         \(?([{letter_range}])\)?
+#         \)?
+#     """
+    
+#     answer_match = re.search(answer_pattern, text, re.IGNORECASE | re.VERBOSE)
+
+#     answer = None
+#     if answer_match:
+#         # group(1) = boxed answer
+#         # group(2) = final answer pattern
+#         answer = answer_match.group(1) or answer_match.group(2)
+#         if answer:
+#             answer = answer.upper()
+
+#     # --- Confidence extraction (unchanged from your logic) ---
+#     conf_match = re.search(r"Confidence:\s*([A-Za-z\- ]+)", text)
+#     confidence = None
+#     if conf_match:
+#         confidence = conf_match.group(1).strip().lower()
+
+#         if "certainty" not in confidence:
+#             confidence += " certainty"
+
+#         if confidence not in class_labels:
+#             confidence = None
+
+#     return {
+#         "answer": answer,
+#         "confidence": conf_match.group(1).strip() if conf_match else None,
+#         "confidence_score": conf2score[confidence] if confidence in conf2score else None
+#     }
+
+
+def parse_output(text: str, subset: str = "medxpertqa"):
+    if subset in ["medqa_4opt", "medmcqa"]:
+        letter_range = "A-D"
+    elif subset in ["afrimedqa", "medqa_5opt", "medxpertqa-MM"]:
+        letter_range = "A-E"
+    elif subset == "medxpertqa":
+        letter_range = "A-J"
+    else:
+        raise ValueError("Unknown subset")
+
+    # -----------------------
+    # 1️⃣ PRIORITY: boxed answer for reasoner moels
+    # -----------------------
+    boxed_pattern = rf"""
+        \\boxed\{{\s*\(?([{letter_range}])\)?\s*\}}
     """
-    # Match \boxed{A}
-    answer_match = re.search(r"\\boxed\{([A-Z])\}", text)
-    # Match confidence after "Confidence:"
+
+    boxed_match = re.search(boxed_pattern, text, re.IGNORECASE | re.VERBOSE)
+    if boxed_match:
+        answer = boxed_match.group(1).upper()
+    else:
+        # -----------------------
+        # 2️⃣ FALLBACK patterns for instruct models
+        # -----------------------
+        fallback_pattern = rf"""
+            Final\s*Answer\s*[:=-]\s*
+            (?:\*\*|\*)?
+            \s*(?:option\s*)?
+            \(?([{letter_range}])\)?
+            |
+            \boption\s*\(?([{letter_range}])\)?
+        """
+
+        fallback_match = re.search(
+            fallback_pattern, text, re.IGNORECASE | re.VERBOSE
+        )
+
+        answer = None
+        if fallback_match:
+            answer = (fallback_match.group(1) or fallback_match.group(2)).upper()
+
+    # --- Confidence extraction (unchanged from your logic) ---
     conf_match = re.search(r"Confidence:\s*([A-Za-z\- ]+)", text)
-    # check if confidence is in class_labels
     confidence = None
     if conf_match:
         confidence = conf_match.group(1).strip().lower()
-        
+
         if "certainty" not in confidence:
             confidence += " certainty"
 
@@ -83,13 +200,14 @@ def parse_output(text: str):
             confidence = None
 
     return {
-        "answer": answer_match.group(1) if answer_match else None,
+        "answer": answer,
         "confidence": conf_match.group(1).strip() if conf_match else None,
         "confidence_score": conf2score[confidence] if confidence in conf2score else None
     }
 
 
-def save_results_gemini(job_name, output_dir, gold_answers=None):
+
+def save_results_gemini(job_name, output_dir, gold_answers=None, subset=None):
 
     completed_states = set([
         'JOB_STATE_SUCCEEDED',
@@ -166,7 +284,7 @@ def save_results_gemini(job_name, output_dir, gold_answers=None):
                         thinking = part['text']
                     else:
                         answer = part['text']
-                        output = parse_output(answer)
+                        output = parse_output(answer, subset=subset)
                         final_answer = output['answer'] 
                         confidence = output['confidence']
                         confidence_score = output['confidence_score']
@@ -199,7 +317,7 @@ def save_results_gemini(job_name, output_dir, gold_answers=None):
             print(f"Error: {batch_job.error}")
 
 
-def save_results_openai(job_name, output_dir):
+def save_results_openai(job_name, output_dir, gold_answers=None, subset=None):
 
     #print(client.batches.retrieve(args.batch_id))
     response = client.batches.retrieve(job_name)
@@ -262,7 +380,7 @@ def save_results_openai(job_name, output_dir):
                     elif out['type'] == "message":
                         completion = out['content'][0]['text'] if out['content'] else ""
                         #print(k, completion)
-                        output = parse_output(completion)
+                        output = parse_output(completion, subset=subset)
                         print(k, output)
                         final_answer = output['answer'] 
                         confidence = output['confidence']
@@ -279,7 +397,7 @@ def save_results_openai(job_name, output_dir):
         if response.status == "failed":
             print(response)
 
-def save_results_together(job_name, output_dir, gold_answers=None):
+def save_results_together(job_name, output_dir, gold_answers=None, subset=None):
     batch_stat = client.batches.get_batch(job_name)
 
     print(batch_stat.status)
@@ -311,6 +429,9 @@ def save_results_together(job_name, output_dir, gold_answers=None):
             completion_length = item['response']['body']['usage']['completion_tokens']
             final_answer = ""
             reasoning = ""
+            output = {}
+            confidence = ""
+            confidence_score = ""
             if "gpt-oss" not in output_dir:
                 #modes = ["incorrect", "none_of_the_provided", "options_only", "yes_no_maybe", "roman_numeral", "fixed_pos", "no_symbols"]
 
@@ -318,19 +439,20 @@ def save_results_together(job_name, output_dir, gold_answers=None):
                 if final_answer_idx > 0:
                     final_answer = completion[final_answer_idx:]
                     #reasoning = completion[:final_answer_idx]
-                    output = parse_output(final_answer.replace("*",""))
+                    output = parse_output(final_answer.replace("*",""), subset=subset)
 
             else:
                 
                 reasoning = item['response']['body']['choices'][0]['message']['reasoning']
                 if completion.strip():
-                    output = parse_output(completion)
+                    output = parse_output(completion, subset=subset)
                 else:
-                    output = parse_output(completion)     
-        
-            final_answer = output['answer'] 
-            confidence = output['confidence']
-            confidence_score = output['confidence_score']
+                    output = parse_output(completion, subset=subset)     
+            
+            if output:
+                final_answer = output['answer'] 
+                confidence = output['confidence']
+                confidence_score = output['confidence_score']
             
             with open(f"{output_dir}/generations_{subset}.jsonl", "a") as f:
                 json.dump({"id_question": id_item, "dataset": subset,  "gold_answer": gold_answer, "final_answer": final_answer, "confidence": confidence, "confidence_score": confidence_score, "correct": gold_answer == final_answer, "completion": completion, "thinking": reasoning, "thinking_tokens": completion_length}, f)
@@ -453,20 +575,21 @@ if __name__ == "__main__":
         client = genai.Client(api_key=GEMINI_API_KEY)
         #batch_job = client.batches.get(name=job_name)
         print("Processing results...")
-        save_results_gemini(job_name, output_dir, gold_answers=gold_answers)
+        print("Susbet:", subset)
+        save_results_gemini(job_name, output_dir, gold_answers=gold_answers, subset=subset)
         print("Done!")
 
     elif "together" in output_dir:
         client = Together() # auth defaults to os.environ.get("TOGETHER_API_KEY")
         print("Processing results...")
-        save_results_together(job_name, output_dir, gold_answers=gold_answers)
+        save_results_together(job_name, output_dir, gold_answers=gold_answers, subset=subset)
         print("Done!")
 
     elif "openai" in output_dir:
         OPENAI_KEY = os.getenv("OPENAI_KEY")
         client = OpenAI(api_key=OPENAI_KEY)
         print("Processing results...")
-        save_results_openai(job_name, output_dir)
+        save_results_openai(job_name, output_dir, gold_answers=gold_answers, subset=subset)
         print("output_dir:", output_dir)
         print("Done!")
 
