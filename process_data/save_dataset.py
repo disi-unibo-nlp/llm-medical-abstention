@@ -1,8 +1,8 @@
 import json
 from collections import Counter
 
-BENCHMARK = "afrimedqa"
-input_file = f"out/classification/gemini_api/gemini-2.5-flash/afrimedqa/2025-12-09_21-17-23/classification_afrimedqa.jsonl"
+BENCHMARK = "medxpertqa-MM"  # medqa_4opt, medqa_5opt, medmcqa, afrimedqa, medxpertqa
+input_file = f"out/classification/gemini_api/gemini-2.5-flash/medxpertqa-MM/2025-12-05_11-04-09/classification_medxpertqa.jsonl"
 
 if BENCHMARK in ["medqa_4opt", "medqa_5opt", "medmcqa"]:
     with open(f'data/bench/{BENCHMARK}.jsonl') as f:
@@ -27,7 +27,7 @@ elif BENCHMARK == "afrimedqa":
 
 else:  # medxpertqa
     from datasets import load_dataset
-    modality = "MM" if "MM" in input_file else "text"
+    modality = "MM" if "MM" in input_file else "Text"
     data_bench = load_dataset('TsinghuaC3I/MedXpertQA', modality, split='test')
     id2item = {d['id']: d for d in data_bench}
 
@@ -49,14 +49,14 @@ print(f"Total S: {len(bench_S)}")
 print(f"Total: {len(bench_LT) + len(bench_S)}")
 print(f"Original Benchmark Size: {len(data_bench)}")
 
-import os
-os.makedirs(f'data/bench/{BENCHMARK}', exist_ok=True)
-with open(f'data/bench/{BENCHMARK}/{BENCHMARK}_LT.jsonl', 'w') as f:
-    for item in bench_LT:
-        json.dump(item, f, ensure_ascii=False)
-        f.write("\n")
+# import os
+# os.makedirs(f'data/bench/{BENCHMARK}', exist_ok=True)
+# with open(f'data/bench/{BENCHMARK}/{BENCHMARK}_LT.jsonl', 'w') as f:
+#     for item in bench_LT:
+#         json.dump(item, f, ensure_ascii=False)
+#         f.write("\n")
 
-with open(f'data/bench/{BENCHMARK}/{BENCHMARK}_S.jsonl', 'w') as f:
-    for item in bench_S:
-        json.dump(item, f, ensure_ascii=False)
-        f.write("\n")
+# with open(f'data/bench/{BENCHMARK}/{BENCHMARK}_S.jsonl', 'w') as f:
+#     for item in bench_S:
+#         json.dump(item, f, ensure_ascii=False)
+#         f.write("\n")
