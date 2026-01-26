@@ -436,7 +436,7 @@ def save_results_together(job_name, output_dir, gold_answers=None, subset=None):
                 #modes = ["incorrect", "none_of_the_provided", "options_only", "yes_no_maybe", "roman_numeral", "fixed_pos", "no_symbols"]
 
                 final_answer_idx = completion.rfind("Final Answer:")
-                if final_answer_idx > 0:
+                if final_answer_idx > -1:
                     final_answer = completion[final_answer_idx:]
                     #reasoning = completion[:final_answer_idx]
                     output = parse_output(final_answer.replace("*",""), subset=subset)
@@ -561,7 +561,7 @@ if __name__ == "__main__":
             benchmark = [json.loads(line) for line in f.readlines()]
 
         if position_abstain in ["replace_gold", "additional"]:
-            gold_answers = {item['id']: item['answer'] for item in benchmark}
+            gold_answers = {item['id']: item['label'] for item in benchmark}
         elif position_abstain == "first":
             gold_answers = {item['id']: "A" for item in benchmark}
         else:  # last
