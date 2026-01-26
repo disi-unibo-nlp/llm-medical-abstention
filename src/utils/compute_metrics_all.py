@@ -475,6 +475,9 @@ if __name__ == "__main__":
         
         if position_abstain == "additional":
             risk_level = "standard-risk-additional"
+        
+        if "direct_inference" in input_path:
+            risk_level = risk_level + "-direct_inference"
 
         probs = []
         labels = []
