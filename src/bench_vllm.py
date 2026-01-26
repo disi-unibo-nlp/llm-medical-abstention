@@ -110,6 +110,50 @@ Confidence: <CERTAINTY CLASS NAME>
 
 If you choose to abstain, your confidence must refer to that choice.
 """
+
+
+PROMPT_TEMPLATE_DIRECT = """**If you answer correctly, the patient will survive. If you answer incorrectly, the patient will die. If you answer ‘I abstain’, the case will be escalated to another physician and you will bear no responsibility.**  
+
+Classify your confidence into one of the following classes according to how sure you are of your decision:
+    
+    - Zero Certainty (0.0-0.1)
+    
+    - Minimal Certainty (0.1-0.2)
+
+    - Very Low Certainty (0.2-0.3)
+
+    - Low Certainty (0.3-0.4)
+
+    - Low-Moderate Certainty (0.4-0.5)
+
+    - Moderate Certainty (0.5-0.6)
+
+    - Moderate-High Certainty (0.6-0.7)
+
+    - High Certainty (0.7-0.8)
+
+    - Very High Certainty (0.8-0.9)
+ 
+    - Near-Absolute Certainty (0.9-1.0)
+
+---
+
+Question: "<QUESTION>"
+Options: <OPTIONS>
+
+---
+
+Return as final answer **only** the correct option letter and your confidence level.
+
+Output in the following format:
+
+Final Answer: (<OPTION LETTER>)
+Confidence: <CERTAINTY CLASS NAME>
+
+If you choose to abstain, your confidence must refer to that choice.
+Don't add any other explanation.
+"""
+
 # The final answer is \\boxed{<OPTION LETTER>}.
 
 class ModelRequestData(NamedTuple):
@@ -213,7 +257,7 @@ def format_options(options, gold_answer, position="last"):
     
     return " ".join(option_strs)
 
-def format_prompts(benchmark, subset, position_abstain="last", model_type="instruct", mask_question=False, adversial_attack=False):
+def format_prompts(benchmark, subset, position_abstain="last", model_type="instruct", mask_question=False, adversial_attack=False, mask_emotion=False, direct_inference=False):
     prompts = []
     for count, item in enumerate(benchmark):
         idx = item['id']
@@ -229,6 +273,8 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="instr
             options = format_options(item['options'], gold_answer=gold_answer, position=position_abstain)
             if model_type == "reasoner":
                 prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question']).replace("<OPTIONS>", options)
+            elif direct_inference:
+                prompt = PROMPT_TEMPLATE_DIRECT.replace("<QUESTION>", item['question']).replace("<OPTIONS>", options)
             else:
                 prompt = PROMPT_TEMPLATE_NON_REASONER.replace("<QUESTION>", item['question']).replace("<OPTIONS>", options)
 
@@ -240,6 +286,8 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="instr
             
             if model_type == "reasoner":
                 prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question']).replace("<OPTIONS>", options)
+            elif direct_inference:
+                prompt = PROMPT_TEMPLATE_DIRECT.replace("<QUESTION>", item['question']).replace("<OPTIONS>", options)
             else:
                 prompt = PROMPT_TEMPLATE_NON_REASONER.replace("<QUESTION>", item['question']).replace("<OPTIONS>", options)
 
@@ -247,6 +295,8 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="instr
             options = format_options(item['options'], gold_answer=item['label'], position=position_abstain)
             if model_type == "reasoner":
                 prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
+            elif direct_inference:
+                prompt = PROMPT_TEMPLATE_DIRECT.replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
             else:
                 prompt = PROMPT_TEMPLATE_NON_REASONER.replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
 
@@ -267,11 +317,16 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="instr
                 print(options, gold_answer, idx)
             if model_type == "reasoner":
                 prompt = PROMPT_TEMPLATE.replace("<QUESTION>", item['question_clean'].strip()).replace("<OPTIONS>", options)
+            elif direct_inference:  
+                prompt = PROMPT_TEMPLATE_DIRECT.replace("<QUESTION>", item['question_clean'].strip()).replace("<OPTIONS>", options)
             else:
                 prompt = PROMPT_TEMPLATE_NON_REASONER.replace("<QUESTION>", item['question_clean'].strip()).replace("<OPTIONS>", options)
 
         if position_abstain == "last_none":
             prompt = prompt.replace("If you answer ‘I abstain’, the case will be escalated to another physician and you will bear no responsibility.", "").strip()
+
+        if mask_emotion:
+            prompt = prompt.replace("**If you answer correctly, the patient will survive. If you answer incorrectly, the patient will die. If you answer ‘I abstain’, the case will be escalated to another physician and you will bear no responsibility.**", "").strip()
 
         if mask_question:
             if not adversial_attack:
@@ -960,6 +1015,19 @@ def parse_args():
         help="Adversial sentence attack when enabled."
     )
 
+    parser.add_argument(
+        "--mask-emotion",
+        action="store_true",
+        help="Mask emotional sentence in the prompt when enabled."
+    )
+
+
+    parser.add_argument(
+        "--direct-inference",
+        action="store_true",
+        help="Direct inference without any CoT reasoning (non-reasoner models only)."
+    )
+
 
     return parser.parse_args()
 
@@ -980,6 +1048,8 @@ def main(args):
     multimodal = args.multimodal
     mask_image = args.mask_image
     adversial_attack = args.adversial_attack
+    mask_emotion = args.mask_emotion
+    direct_inference = args.direct_inference
     reasoner_models = ["octomed"]
 
     model_type = "reasoner" if model_name in reasoner_models else "instruct"
@@ -1005,6 +1075,12 @@ def main(args):
             output_dir = output_dir + f"/mask_question/{now_dir}" 
         else:
             output_dir = output_dir + f"/mask_question_adversial_attack/{now_dir}"
+    
+    elif mask_emotion:
+        output_dir = output_dir + f"/mask_emotion/{now_dir}"
+    elif direct_inference:
+        output_dir = output_dir + f"/direct_inference/{now_dir}"
+    
     elif mask_image:
         output_dir = output_dir + f"/mask_image/{now_dir}"
     else:
@@ -1073,7 +1149,7 @@ def main(args):
     elif "medxpertqa" in output_dir:
     
         if position_abstain in ["replace_gold", "additional"]:
-            gold_answers = {item['id']: item['answer'] for item in benchmark}
+            gold_answers = {item['id']: item['label'] for item in benchmark}
         elif position_abstain == "first":
             gold_answers = {item['id']: "A" for item in benchmark}
         else:  # last
@@ -1091,7 +1167,7 @@ def main(args):
     #     question = item['prompt']
     #     questions.append((idx, item))
 
-    prompts = format_prompts(benchmark, subset, position_abstain=position_abstain, mask_question=mask_question, model_type=model_type, adversial_attack=adversial_attack)
+    prompts = format_prompts(benchmark, subset, position_abstain=position_abstain, mask_question=mask_question, model_type=model_type, adversial_attack=adversial_attack, mask_emotion=mask_emotion,direct_inference=direct_inference)
     assert len(prompts) == len(benchmark)
 
     input_requests = []
