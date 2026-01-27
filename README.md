@@ -39,17 +39,32 @@ In safety-critical domains like medicine, this distinction is essential. A model
 
 A typical usage workflow of the benchmark consists of the following steps:
 
-1. [**Data Preparation**](#data):
+1. [**Clone Repository**](#installation): Clone the repository and install dependencies.
+
+2. [**Data Preparation**](#data):
    Either download the preprocessed datasets or regenerate them from scratch by following the steps in [**Data Preprocessing**](#data-preprocessing).
 
-2. [**Environment Setup**](#environment-setup):
+3. [**Environment Setup**](#environment-setup):
    Install dependencies and configure the required API keys.
 
-3. [**Run Evaluation**](#quick-start):
+4. [**Run Evaluation**](#quick-start):
    Evaluate models using local or API-based inference across different datasets and perturbation settings (e.g., masking, adversarial attacks, direct inference).
 
-4. [**Compute Metrics**](#compute-metrics):
+5. [**Compute Metrics**](#compute-metrics):
    Compute evaluation metrics, including **Abstention Rate**, **Expected Calibration Error (ECE)**, **Brier Score**, and **AUROC**, using the generated model outputs.
+
+---
+
+## Installation
+
+```bash
+# Clone the repository
+git clone https://anonymous.4open.science/r/llm-medical-abstention-2D5E
+cd llm-medical-abstention
+
+# Install dependencies
+pip install -r requirements.txt
+```
 
 ---
 
@@ -74,16 +89,7 @@ The `data/` directory contains the following subfolders:
 If you wish to reproduce the dataset from scratch, including threat classification, subsampling, and option swapping, please refer to Section **[Data Preprocessing](#data-preprocessing)**.
 
 ---
-## Installation
 
-```bash
-# Clone the repository
-git clone https://anonymous.4open.science/r/llm-medical-abstention-2D5E
-cd llm-medical-abstention
-
-# Install dependencies
-pip install -r requirements.txt
-```
 
 ## Environment Setup
 
