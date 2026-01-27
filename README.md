@@ -349,3 +349,86 @@ python3 -m src.bench_api \
     --multimodal \
     --limit 20
 ```
+---
+
+## Data Preprocessing
+
+All data preprocessing scripts are located in the [`process_data/`](process_data/) directory.
+The pipeline below is applied **per dataset subset** (e.g., MedQA, MedMCQA, AfriMed-QA, etc.).
+
+---
+
+### Step 1: Threat Classification (Life-threatening vs. Safe)
+
+For each selected subset, we classify every question as **life-threatening** or **safe**.
+This is done using **Gemini-2.5-Flash** as an automatic judge via the **Gemini Batch API**.
+
+```bash
+python3 process_data/classify_threat_data_api.py \
+    --subset "afrimedqa" \
+    --input-dir "data/bench" \
+    --output-dir "out/classification"
+```
+
+---
+
+### Step 2: Retrieve Classification Results
+
+After the batch job completes, retrieve the classification results for the selected subset:
+
+```bash
+python3 process_data/results_threat_data_api.py \
+    --output-dir "out/classification/gemini_api/gemini-2.5-flash/afrimedqa/2025-12-09_21-17-23"
+    --job-name "batches/iy79im8i5mk2y7c7dsnqkiox39kzj5pwuawx"
+
+```
+---
+
+### Step 3: Save the Processed Dataset Locally
+
+The classified dataset is then saved to disk for downstream evaluation:
+
+```bash
+python3 process_data/save_dataset.py \
+    --benchmark afrimedqa \
+    --input-file "out/classification/gemini_api/gemini-2.5-flash/medxpertqa-MM/2025-12-05_11-04-09/classification_afrimedqa.jsonl"
+```
+---
+
+### Step 4: Subsampling Safe Instances (MedMCQA & AfriMed-QA)
+
+For **MedMCQA** and **AfriMed-QA**, the number of instances labeled as *safe* is substantially larger.
+To keep experiments scalable, we subsample **1,000 safe instances per dataset**, using stratified sampling.
+
+#### MedMCQA
+
+Stratified by the `subject_name` field:
+
+```bash
+python3 process_data/filter_medmcqa.py
+```
+
+#### AfriMed-QA
+
+Stratified by the `specialty` field:
+
+```bash
+python3 process_data/filter_afrimedqa.py
+```
+
+---
+
+### Optional: Answer Option Swapping (Ablation Study)
+
+For the option-swapping ablation, we randomly replace a group of answer options from one question with those of another.
+This experiment is conducted **only for MedQA-4opt and MedXpertQA**.
+
+```bash
+python3 process_data/swap_options.py \
+    --input-dir "data/bench" \
+    --output-dir "data/swap" \
+    --subset "medxpertqa" \
+    --mode "group"
+```
+
+---
