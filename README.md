@@ -62,7 +62,6 @@ git clone https://anonymous.4open.science/r/llm-medical-abstention-2D5E
 cd llm-medical-abstention
 
 # Install dependencies
-
 pip install -r requirements.txt
 ```
 
@@ -372,6 +371,58 @@ python3 -m src.bench_api \
     --mask-image \
     --adversarial-attack
 ```
+
+---
+
+## Compute Metrics
+
+After running inference, evaluation metrics can be computed directly from the generated prediction files (`.jsonl`).
+Metrics are aggregated across datasets and saved both as **numeric results** and **visualizations**.
+
+Below is an example script showing how to compute metrics for a single model evaluated across multiple benchmarks.
+
+---
+
+### Example: Computing Metrics for a Model
+
+The script below collects the output paths corresponding to different datasets and computes all evaluation metrics in a single run.
+
+```bash
+#!/bin/bash
+
+# Input paths for model generations (one per dataset)
+INPUT_PATH_MEDQA_5OPT="out/completions/gemini_api/gemini-2.5-flash/medqa_5opt/life-threatening/last/mask_question/2025-12-16_14-19-57/generations_medqa_5opt.jsonl"
+INPUT_PATH_MEDQA_4OPT="out/completions/gemini_api/gemini-2.5-flash/medqa_4opt/life-threatening/last/mask_question/2025-12-16_11-48-40/generations_medqa_4opt.jsonl"
+INPUT_PATH_MEDMCQA="out/completions/gemini_api/gemini-2.5-flash/medmcqa/life-threatening/last/mask_question/2025-12-16_14-20-26/generations_medmcqa.jsonl"
+INPUT_PATH_MEDXPERTQA="out/completions/gemini_api/gemini-2.5-flash/medxpertqa/life-threatening/last/mask_question/2025-12-16_14-20-12/generations_medxpertqa.jsonl"
+INPUT_PATH_AFRIMEDQA="out/completions/gemini_api/gemini-2.5-flash/afrimedqa/life-threatening/last/mask_question/2025-12-16_11-46-10/generations_afrimedqa.jsonl"
+INPUT_PATH_MEDXPERTQA_MM=""
+
+# Output directories
+OUT_PLOTS_DIR="out/plots"
+OUT_METRICS_DIR="out/metrics"
+
+# Collect non-empty input paths
+INPUT_PATHS=()
+
+for p in \
+  "$INPUT_PATH_MEDQA_5OPT" \
+  "$INPUT_PATH_MEDQA_4OPT" \
+  "$INPUT_PATH_MEDMCQA" \
+  "$INPUT_PATH_MEDXPERTQA" \
+  "$INPUT_PATH_MEDXPERTQA_MM" \
+  "$INPUT_PATH_AFRIMEDQA"
+do
+  [[ -n "$p" ]] && INPUT_PATHS+=("$p")
+done
+
+# Run metric computation
+python3 -m src.utils.compute_metrics_all \
+  --input-paths "${INPUT_PATHS[@]}" \
+  --out-plots-dir "$OUT_PLOTS_DIR" \
+  --out-metrics-dir "$OUT_METRICS_DIR"
+```
+
 ---
 
 ## Data Preprocessing
