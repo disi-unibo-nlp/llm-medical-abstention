@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Dict
 import copy
 import string
+import argparse
 
 def load_jsonl(file_path: str) -> List[Dict]:
     """Load data from a JSONL file."""
@@ -115,10 +116,41 @@ def swap_mode_mix(benchmark: List[Dict], seed: int = 42, answer_idx_key: str = "
     return swapped_data
 
 def main():
+
+    argparser = argparse.ArgumentParser(
+        description='Swap options in a dataset using two different modes.'
+    )
+    argparser.add_argument(
+        '--input-dir',
+        type=str,
+        default="data/bench",
+        help='Input directory containing the dataset.'
+    )
+    argparser.add_argument(
+        '--output-dir',
+        type=str,
+        default="data/swap",
+        help='Output directory to save the swapped dataset.'
+    )
+    argparser.add_argument(
+        '--subset',
+        type=str,
+        default="medxpertqa",
+        choices=["medqa_4opt", "medqa_5opt", "medmcqa", "medxpertqa", "medxpertqa-MM", "afrimedqa"],
+        help='Dataset subset to process (e.g., medqa_4opt, medxpertqa, etc.).'
+    )
+    argparse.add_argument(
+        '--mode',
+        type=str,
+        default="group",
+        choices=["group", "mix"],
+        help='Swapping mode: "group" for complete option groups, "mix" for individual option mixing.'
+    )
+    args = argparser.parse_args()
     # Configuration
-    input_dir = "data/bench"  # Change this to your input directory
-    output_dir = "data/swap"  # Change this to your output directory
-    subset = "medxpertqa"  
+    input_dir = args.input_dir  
+    output_dir = args.output_dir  
+    subset = args.subset  # e.g., "medqa_4opt", "medxpertqa", etc.
 
     if "medqa" in subset:
         answer_key = "answer"
@@ -128,7 +160,7 @@ def main():
         answer_idx_key = "label"
     
     # Choose mode: "group" or "mix"
-    mode = "group"  # Change to "mix" for mode 2
+    mode = args.mode  # Change to "mix" for mode 2
     
     # Create output directory if it doesn't exist
     Path(output_dir).mkdir(exist_ok=True)
