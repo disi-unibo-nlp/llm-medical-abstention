@@ -33,6 +33,27 @@ This shifts evaluation from **epistemic correctness** (knowledge) to **safety-cr
 
 In safety-critical domains like medicine, this distinction is essential. A model can have partial information yet still need to abstain because the risk of acting outweighs the potential benefit.
 
+## Data
+
+The final datasets used for model evaluation are available for download as a ZIP archive at the following link: [[**Download Data**](https://drive.google.com/file/d/1KZAaMD-EbJlgNfddXLKYy3VkO2NU610P/view?usp=sharing)]
+
+After extracting the archive, place the resulting `data/` directory in the **root of the project**.
+
+The `data/` directory contains the following subfolders:
+
+* **`bench/`**
+  Contains one folder per dataset included in *MedQAbstain*, each further split into **life-threatening** and **safe** subsets.
+
+* **`images/`**
+  Contains image files for **MedXpertQA-MM**. These images are sourced directly from the original HuggingFace dataset:
+  [[MedXpertQA](https://huggingface.co/datasets/TsinghuaC3I/MedXpertQA)]
+
+* **`swap/`**
+  Contains datasets used for the **option-swapping ablation study**, including **MedQA-4opt** and **MedXpertQA-Text**, where answer options have been randomly swapped across questions.
+
+If you wish to reproduce the dataset from scratch, including threat classification, subsampling, and option swapping, please refer to Section **[Data Preprocessing](#data-preprocessing)**.
+
+---
 ## Installation
 
 ```bash
