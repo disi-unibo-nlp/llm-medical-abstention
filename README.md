@@ -56,23 +56,23 @@ We provide two inference modes supporting both **text-only** and **multimodal** 
 
 ### Configuration Parameters
 
-| Parameter            | Description                        | Options / Default                                                                 |
-| -------------------- | ---------------------------------- | --------------------------------------------------------------------------------- |
-| `--subset`           | Dataset to evaluate                | `medxpertqa`, `medmcqa`, `medqa_4opt`, `medqa_5opt`, `afrimedqa`, `medxpertqa-MM` |
-| `--model-name`       | Model to use for inference         | See **Supported Models**                                                          |
-| `--input-dir`        | Directory containing input data    | Default: `data/bench`                                                             |
-| `--output-dir`       | Directory for saving completions   | Default: `out/completions`                                                        |
-| `--limit`            | Limit number of samples (optional) | Integer or empty for all                                                          |
-| `--position-abstain` | Position of abstention option      | `last`, `first`, `replace_gold`, `last_none`, `additional`                        |
-| `--question-type`    | Type of questions to evaluate      | `life-threatening`, `safe`                                                        |
-| `--mask-question`    | Mask question text                 | Flag                                                                              |
-| `--swap-options`     | Swap answer options                | Flag                                                                              |
-| `--multimodal`       | Enable multimodal evaluation       | Flag                                                                              |
-| `--mask-image`       | Mask image input                   | Flag (multimodal only)                                                            |
-| `--adversial-attack` | Enable adversarial attack          | Flag                                                                              |
-| `--mask-emotion`     | Mask emotional stimuli             | Flag                                                                              |
-| `--direct-inference` | Disable CoT, force direct answer   | Flag                                                                              |
-| `--batch-size`       | Batch size for inference           | Integer (e.g., `48`)                                                              |
+| Parameter              | Description                        | Options / Default                                                                 |
+| ---------------------- | ---------------------------------- | --------------------------------------------------------------------------------- |
+| `--subset`             | Dataset to evaluate                | `medxpertqa`, `medmcqa`, `medqa_4opt`, `medqa_5opt`, `afrimedqa`, `medxpertqa-MM` |
+| `--model-name`         | Model to use for inference         | See **Supported Models**                                                          |
+| `--input-dir`          | Directory containing input data    | Default: `data/bench`                                                             |
+| `--output-dir`         | Directory for saving completions   | Default: `out/completions`                                                        |
+| `--limit`              | Limit number of samples (optional) | Integer or empty for all                                                          |
+| `--position-abstain`   | Position of abstention option      | `last`, `first`, `replace_gold`, `last_none`, `additional`                        |
+| `--question-type`      | Type of questions to evaluate      | `life-threatening`, `safe`                                                        |
+| `--mask-question`      | Mask question text                 | Flag                                                                              |
+| `--swap-options`       | Swap answer options                | Flag                                                                              |
+| `--multimodal`         | Enable multimodal evaluation       | Flag                                                                              |
+| `--mask-image`         | Mask image input                   | Flag (multimodal only)                                                            |
+| `--adversarial-attack` | Enable adversarial attack          | Flag                                                                              |
+| `--mask-emotion`       | Mask emotional stimuli             | Flag                                                                              |
+| `--direct-inference`   | Disable CoT, force direct answer   | Flag                                                                              |
+| `--batch-size`         | Batch size for inference           | Integer (e.g., `48`)                                                              |
 
 ---
 
@@ -137,7 +137,7 @@ python3 -m src.bench_vllm \
     --subset medmcqa \
     --model-name llama3 \
     --mask-question \
-    --adversial-attack
+    --adversarial-attack
 ```
 
 **Direct inference without CoT reasoning**  
@@ -215,7 +215,7 @@ python3 -m src.bench_vllm \
     --multimodal \
     --mask-question \
     --mask-image \
-    --adversial-attack
+    --adversarial-attack
 ```
 
 ### 2. API-based Inference (OpenAI, Google, Together AI)
@@ -262,7 +262,7 @@ python3 -m src.bench_api \
     --subset medmcqa \
     --model-name gemini-2.5-flash \
     --mask-question \
-    --adversial-attack
+    --adversarial-attack
 ```
 
 **Direct inference without CoT reasoning**  
@@ -340,14 +340,16 @@ python3 -m src.bench_api \
     --mask-image
 ```
 
-**Evaluate with limited samples**  
-Process only 20 samples for quick testing:
+**Mask both + Adversarial attack**  
+All input sources are masked, but an adversarial sentence is added to push the model to answer anyway:
 ```bash
 python3 -m src.bench_api \
     --subset medxpertqa-MM \
     --model-name gemini-2.5-flash \
     --multimodal \
-    --limit 20
+    --mask-question \
+    --mask-image \
+    --adversarial-attack
 ```
 ---
 
