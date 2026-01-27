@@ -16,7 +16,7 @@ MedQAbstain repurposes standard medical MCQA datasets to evaluate abstention as 
 
 - ❌ **Removes the gold answer** from available options
 
-- ✅ **Adds an explicit "I abstain" option** (e.g., "refer to specialist", "escalate to senior physician")
+- ✅ **Adds an explicit "I abstain" option** (e.g., "escalate to another physician")
 
 - 🎯 **Makes abstention the only correct choice** since no safe action remains
 
