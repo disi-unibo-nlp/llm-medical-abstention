@@ -220,6 +220,8 @@ python3 -m src.bench_vllm \
 
 ### 2. API-based Inference (OpenAI, Google, Together AI)
 
+> **Note:** API-based inference requires valid API keys for the respective services (OpenAI, Google AI, Together AI). Make sure to set up your API keys in environment variables or configuration files before running these commands.
+
 #### Text-Only Inference Example
 Basic text-only inference on MedQA dataset using API models
 
@@ -347,5 +349,3 @@ python3 -m src.bench_api \
     --multimodal \
     --limit 20
 ```
-
-> **Note:** API-based inference requires valid API keys for the respective services (OpenAI, Google AI, Together AI). Make sure to set up your API keys in environment variables or configuration files before running these commands.
