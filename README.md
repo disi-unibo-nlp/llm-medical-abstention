@@ -65,6 +65,20 @@ cd llm-medical-abstention
 pip install -r requirements.txt
 ```
 
+## Environment Setup
+
+Before running any inference or preprocessing steps, configure the required API credentials.
+Create a `.env` file in the root directory of the project and add the following environment variables:
+
+```bash
+GEMINI_API_KEY=<your_gemini_api_key_here>
+HUGGINGFACE_TOKEN=<your_huggingface_token_here>
+TOGETHER_API_KEY=<your_together_api_key_here>
+OPENAI_API_KEY=<your_openai_api_key_here>
+```
+
+These variables are automatically loaded at runtime using `load_dotenv()`, so no manual exporting is required.
+
 ## Quick Start
 
 We provide two inference modes supporting both **text-only** and **multimodal** evaluation:
