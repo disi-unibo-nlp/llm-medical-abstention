@@ -39,7 +39,7 @@ In safety-critical domains like medicine, this distinction is essential. A model
 
 A typical usage workflow of the benchmark consists of the following steps:
 
-1. [**Clone Repository**](#installation): Clone the repository and install dependencies.
+1. [**Installation**](#installation): Clone the repository and install dependencies.
 
 2. [**Data Preparation**](#data):
    Either download the preprocessed datasets or regenerate them from scratch by following the steps in [**Data Preprocessing**](#data-preprocessing).
