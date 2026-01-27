@@ -33,6 +33,26 @@ This shifts evaluation from **epistemic correctness** (knowledge) to **safety-cr
 
 In safety-critical domains like medicine, this distinction is essential. A model can have partial information yet still need to abstain because the risk of acting outweighs the potential benefit.
 
+---
+
+## Typical Workflow
+
+A typical usage workflow of the benchmark consists of the following steps:
+
+1. [**Data Preparation**](#data):
+   Either download the preprocessed datasets or regenerate them from scratch by following the steps in [**Data Preprocessing**](#data-preprocessing).
+
+2. [**Environment Setup**](#environment-setup):
+   Install dependencies and configure the required API keys.
+
+3. [**Run Evaluation**](#quick-start):
+   Evaluate models using local or API-based inference across different datasets and perturbation settings (e.g., masking, adversarial attacks, direct inference).
+
+4. [**Compute Metrics**](#compute-metrics):
+   Compute evaluation metrics, including **Abstention Rate**, **Expected Calibration Error (ECE)**, **Brier Score**, and **AUROC**, using the generated model outputs.
+
+---
+
 ## Data
 
 The final datasets used for model evaluation are available for download as a ZIP archive at the following link: [[**Download Data**](https://drive.google.com/file/d/1KZAaMD-EbJlgNfddXLKYy3VkO2NU610P/view?usp=sharing)]
@@ -195,8 +215,8 @@ python3 -m src.bench_vllm \
 ---
 
 #### Multimodal Inference Example
+Multimodal inference on MedXpertQA
 ```bash
-# Multimodal inference on MedXpertQA
 VLLM_WORKER_MULTIPROC_METHOD=spawn CUDA_VISIBLE_DEVICES=0 python3 -m src.bench_vllm \
     --subset medxpertqa-MM \
     --question-type life-threatening \
