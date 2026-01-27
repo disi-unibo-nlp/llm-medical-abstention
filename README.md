@@ -230,7 +230,7 @@ python3 -m src.bench_api \
     --subset medqa_4opt \
     --question-type life-threatening \
     --position-abstain last \
-    --model-name gemini-2.5-flash \
+    --model-name gpt-5-mini \
     --input-dir data/bench \
     --output-dir out/completions
 ```
@@ -270,7 +270,7 @@ The model is prompted to answer directly with a letter instead of reasoning step
 ```bash
 python3 -m src.bench_api \
     --subset afrimedqa \
-    --model-name gpt-5-mini \
+    --model-name meta-llama/Llama-3.3-70B-Instruct-Turbo \
     --direct-inference
 ```
 
@@ -288,7 +288,7 @@ Enable low effort responses to test model behavior under minimal engagement:
 ```bash
 python3 -m src.bench_api \
     --subset medqa_4opt \
-    --model-name meta-llama/Llama-3.3-70B-Instruct-Turbo \
+    --model-name openai/gpt-oss-120b \
     --low-effort
 ```
 
@@ -301,7 +301,7 @@ python3 -m src.bench_api \
     --subset medxpertqa-MM \
     --question-type life-threatening \
     --position-abstain last \
-    --model-name gpt-5-mini \
+    --model-name gemini-2.5-flash \
     --input-dir data/bench \
     --output-dir out/completions \
     --multimodal
