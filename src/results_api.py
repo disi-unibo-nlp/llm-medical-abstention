@@ -1,36 +1,15 @@
 import json
 import argparse
+import os
+import time
 from google import genai
 from google.genai import types
 from openai import OpenAI
 from together import Together
-import time
 from dotenv import load_dotenv
-import os
+from src.utils.utils import get_gold_answers, parse_output, load_benchmark
 load_dotenv()
 
-
-import re
-
-# - Zero Certainty (0.0-0.1)
-    
-#     - Minimal Certainty (0.1-0.2)
-
-#     - Very Low Certainty (0.2-0.3)
-
-#     - Low Certainty (0.3-0.4)
-
-#     - Low-Moderate Certainty (0.4-0.5)
-
-#     - Moderate Certainty (0.5-0.6)
-
-#     - Moderate-High Certainty (0.6-0.7)
-
-#     - High Certainty (0.7-0.8)
-
-#     - Very High Certainty (0.8-0.9)
- 
-#     - Near-Absolute Certainty (0.9-1.0)
 
 class_labels = [
     "zero certainty",
@@ -57,153 +36,6 @@ conf2score = {
     "very high certainty": 0.85,
     "near-absolute certainty": 0.95
 }
-
-# def parse_output(text: str):
-#     """
-#     Parses output of the form:
-#         The final answer is \\boxed{<OPTION LETTER>}.
-#         Confidence: <CERTAINTY CLASS NAME>
-
-#     Returns:
-#         dict with keys "answer" and "confidence".
-#     """
-#     # Match \boxed{A}
-#     answer_match = re.search(r"\\boxed\{([A-Z])\}", text)
-#     # Match confidence after "Confidence:"
-#     conf_match = re.search(r"Confidence:\s*([A-Za-z\- ]+)", text)
-#     # check if confidence is in class_labels
-#     confidence = None
-#     if conf_match:
-#         confidence = conf_match.group(1).strip().lower()
-        
-#         if "certainty" not in confidence:
-#             confidence += " certainty"
-
-#         if confidence not in class_labels:
-#             confidence = None
-
-#     return {
-#         "answer": answer_match.group(1) if answer_match else None,
-#         "confidence": conf_match.group(1).strip() if conf_match else None,
-#         "confidence_score": conf2score[confidence] if confidence in conf2score else None
-#     }
-
-# def parse_output_old(text: str, subset: str = "medxpertqa"):
-#     """
-#     Robust answer extraction supporting:
-#         \boxed{A}, \boxed{(A)}, Final Answer: A, Final Answer: (A),
-#         Final Answer: *A*, **A**, I), option I), etc.
-#     """
-
-#     if subset in ["medqa_4opt", "medmcqa"]:
-#         letter_range = "A-D"
-#     elif subset in ["afrimedqa", "medqa_5opt", "medxpertqa-MM"]:
-#         letter_range = "A-E"
-#     elif subset == "medxpertqa":
-#         letter_range = "A-J"
-
-#     # Ultra-flexible answer pattern:
-#     # Captures a single letter option after stripping parentheses, asterisks, bold, etc.
-    
-#     answer_pattern = rf"""
-#         # \boxed{{A}} or \boxed{{(A)}}
-#         \\boxed\{{\s*\(?([{letter_range}])\)?\s*\}}
-#         |
-#         # Final Answer: ...<letter>...)
-#         Final\s*Answer[:\s]*
-#         (?:\*\*|\*)?
-#         \s*(?:option\s*)?
-#         \(?([{letter_range}])\)?
-#         \)?
-#     """
-    
-#     answer_match = re.search(answer_pattern, text, re.IGNORECASE | re.VERBOSE)
-
-#     answer = None
-#     if answer_match:
-#         # group(1) = boxed answer
-#         # group(2) = final answer pattern
-#         answer = answer_match.group(1) or answer_match.group(2)
-#         if answer:
-#             answer = answer.upper()
-
-#     # --- Confidence extraction (unchanged from your logic) ---
-#     conf_match = re.search(r"Confidence:\s*([A-Za-z\- ]+)", text)
-#     confidence = None
-#     if conf_match:
-#         confidence = conf_match.group(1).strip().lower()
-
-#         if "certainty" not in confidence:
-#             confidence += " certainty"
-
-#         if confidence not in class_labels:
-#             confidence = None
-
-#     return {
-#         "answer": answer,
-#         "confidence": conf_match.group(1).strip() if conf_match else None,
-#         "confidence_score": conf2score[confidence] if confidence in conf2score else None
-#     }
-
-
-def parse_output(text: str, subset: str = "medxpertqa"):
-    if subset in ["medqa_4opt", "medmcqa"]:
-        letter_range = "A-D"
-    elif subset in ["afrimedqa", "medqa_5opt", "medxpertqa-MM"]:
-        letter_range = "A-E"
-    elif subset == "medxpertqa":
-        letter_range = "A-J"
-    else:
-        raise ValueError("Unknown subset")
-
-    # -----------------------
-    # 1️⃣ PRIORITY: boxed answer for reasoner moels
-    # -----------------------
-    boxed_pattern = rf"""
-        \\boxed\{{\s*\(?([{letter_range}])\)?\s*\}}
-    """
-
-    boxed_match = re.search(boxed_pattern, text, re.IGNORECASE | re.VERBOSE)
-    if boxed_match:
-        answer = boxed_match.group(1).upper()
-    else:
-        # -----------------------
-        # 2️⃣ FALLBACK patterns for instruct models
-        # -----------------------
-        fallback_pattern = rf"""
-            Final\s*Answer\s*[:=-]\s*
-            (?:\*\*|\*)?
-            \s*(?:option\s*)?
-            \(?([{letter_range}])\)?
-            |
-            \boption\s*\(?([{letter_range}])\)?
-        """
-
-        fallback_match = re.search(
-            fallback_pattern, text, re.IGNORECASE | re.VERBOSE
-        )
-
-        answer = None
-        if fallback_match:
-            answer = (fallback_match.group(1) or fallback_match.group(2)).upper()
-
-    # --- Confidence extraction (unchanged from your logic) ---
-    conf_match = re.search(r"Confidence:\s*([A-Za-z\- ]+)", text)
-    confidence = None
-    if conf_match:
-        confidence = conf_match.group(1).strip().lower()
-
-        if "certainty" not in confidence:
-            confidence += " certainty"
-
-        if confidence not in class_labels:
-            confidence = None
-
-    return {
-        "answer": answer,
-        "confidence": conf_match.group(1).strip() if conf_match else None,
-        "confidence_score": conf2score[confidence] if confidence in conf2score else None
-    }
 
 
 
@@ -262,7 +94,7 @@ def save_results_gemini(job_name, output_dir, gold_answers=None, subset=None):
                 
                 id_item = key_splits[1]
                 gold_answer = gold_answers[id_item] if gold_answers and id_item in gold_answers else None
-                #parts = item['response']['candidates'][0]['content']['parts'] if 'candidates' in item['response'] and 'content' in item['response']['candidates'][0] else []
+                
                 parts = (
                     item.get('response', {})
                         .get('candidates', [{}])[0]
@@ -270,11 +102,16 @@ def save_results_gemini(job_name, output_dir, gold_answers=None, subset=None):
                         .get('parts', [])
                 )
 
+                usage_metadata = (
+                    item
+                    .get("response", {})
+                    .get("usageMetadata", {})
+                )
+
                 if "no-think" in output_dir.lower():
-                    #print(item['response']['usageMetadata'])
-                    token_usage = item['response']['usageMetadata']['candidatesTokenCount'] if 'candidatesTokenCount' in item['response']['usageMetadata'] else None
+                    token_usage = usage_metadata.get("candidatesTokenCount")
                 else:
-                    token_usage = item['response']['usageMetadata']['thoughtsTokenCount'] if 'thoughtsTokenCount' in item['response']['usageMetadata'] else None
+                    token_usage = usage_metadata.get("thoughtsTokenCount")
 
                 thinking = ""
                 answer = ""
@@ -418,12 +255,9 @@ def save_results_together(job_name, output_dir, gold_answers=None, subset=None):
         
         for item in completions:
             parts = item['custom_id'].split("-", 1)
-            
             subset = parts[0]
-                
             id_item = parts[1]
 
-            
             gold_answer = gold_answers[id_item] if gold_answers and id_item in gold_answers else None
             completion = item['response']['body']['choices'][0]['message']['content']
             completion_length = item['response']['body']['usage']['completion_tokens']
@@ -432,14 +266,12 @@ def save_results_together(job_name, output_dir, gold_answers=None, subset=None):
             output = {}
             confidence = ""
             confidence_score = ""
-            if "gpt-oss" not in output_dir:
-                #modes = ["incorrect", "none_of_the_provided", "options_only", "yes_no_maybe", "roman_numeral", "fixed_pos", "no_symbols"]
+            if "gpt-oss" not in output_dir: # for non-reasoning models with final answer format
 
                 final_answer_idx = completion.rfind("Final Answer:")
                 if final_answer_idx > -1:
                     final_answer = completion[final_answer_idx:]
-                    #reasoning = completion[:final_answer_idx]
-                    output = parse_output(final_answer.replace("*",""), subset=subset)
+                    output = parse_output(final_answer.replace("*","").replace("<", "").replace(">", ""), subset=subset)
 
             else:
                 
@@ -465,6 +297,13 @@ if __name__ == "__main__":
     )  
 
     parser.add_argument(
+        "--bench-root-dir",
+        type=str,
+        default="data/bench",
+        help="Root directory of the benchmark datasets."
+    )
+
+    parser.add_argument(
         "--output-dir",
         type=str,
         default="out/completions/together_api/openai/gpt-oss-120b/medqa_5opt/life-threatening/last/mask_question/2025-11-28_16-14-29",
@@ -479,8 +318,8 @@ if __name__ == "__main__":
     
     # Use the name of the job you want to check
     # e.g., inline_batch_job.name from the previous step
-    job_name = args.job_name #batches/tdw033ksy8zwa7e8spuj30075my7031b041i" #"batches/jdsea2vgjodl3ftrdvxgpp3f478wwteg01ld" #"batches/taxgnuxeblk3sq3hkgxc6pmskwbaoqtx74kt"  # (e.g. 'batches/your-batch-id')
-    output_dir = args.output_dir #"out/legal/completions/gemini_api/gemini-2.5-flash/professional_law/2025-10-18_00-19-13"
+    job_name = args.job_name 
+    output_dir = args.output_dir 
 
     if "replace_gold" in output_dir:
         position_abstain = "replace_gold"
@@ -491,85 +330,31 @@ if __name__ == "__main__":
     else:
         position_abstain = "last"
 
-    dataset_type = "LT" if "/life-threatening" in output_dir else "S"
-
     if "afrimedqa" in output_dir:
         subset = "afrimedqa"
-
-        data_path = f"data/bench/{subset}/{subset}_{dataset_type}.jsonl"
-        
-        with open(data_path, 'r') as f:
-            benchmark = [json.loads(line) for line in f.readlines()]
-
-        opt2letter = {"option1": "A", "option2": "B", "option3": "C", "option4": "D", "option5": "E"}
-
-        if position_abstain in ["replace_gold", "additional"]:
-            gold_answers = {item['id']: opt2letter[item['correct_answer']] for item in benchmark}
-        elif position_abstain == "first":
-            gold_answers = {item['id']: "A" for item in benchmark}
-        else:  # last
-            gold_answers = {}
-            for item in benchmark:
-                original_options = eval(item['answer_options'])
-                options = {}
-                for opt, value in original_options.items():
-                    if value.lower() != "n/a":
-                        options[opt2letter[opt]] = value
-                gold_answers[item['id']] =  chr(ord('A') + len(options) - 1)
-                
-
-
-    elif "medqa" in output_dir:
-        subset = "medqa_4opt" if "medqa_4opt" in output_dir else "medqa_5opt"
-        data_path = f"data/bench/{subset}/{subset}_{dataset_type}.jsonl"
-        
-        with open(data_path, 'r') as f:
-            benchmark = [json.loads(line) for line in f.readlines()]
-        
-        if position_abstain in ["replace_gold", "additional"]:
-            gold_answers = {item['id']: item['answer_idx'] for item in benchmark}
-        elif position_abstain == "first":
-            gold_answers = {item['id']: "A" for item in benchmark}
-        else:  # last
-            gold_answers = {item['id']: chr(ord('A') + len(item['options']) - 1) for item in benchmark}
-
+    elif "medqa_4opt" in output_dir:
+        subset = "medqa_4opt"
+    elif "medqa_5opt" in output_dir:
+        subset = "medqa_5opt"
     elif "medmcqa" in output_dir:
         subset = "medmcqa"
-
-        data_path = f"data/bench/{subset}/{subset}_{dataset_type}.jsonl"
-        
-        with open(data_path, 'r') as f:
-            benchmark = [json.loads(line) for line in f.readlines()]
-        
-        benchmark = [{**item, 'options': {"A": item['opa'], "B": item['opb'], "C": item['opc'], "D": item['opd']}} for item in benchmark]
-        num2letter = {0: "A", 1: "B", 2: "C", 3: "D"}
-        benchmark = [{**item, "answer": num2letter[item['cop']]} for item in benchmark]
-
-        if position_abstain in ["replace_gold", "additional"]:
-            gold_answers = {item['id']: item['answer'] for item in benchmark}
-        elif position_abstain == "first":
-            gold_answers = {item['id']: "A" for item in benchmark}
-        else:  # last
-            gold_answers = {item['id']: chr(ord('A') + len(item['options']) - 1) for item in benchmark}
-        
-            
+    elif "medxpertqa-MM" in output_dir:
+        subset = "medxpertqa-MM"
     elif "medxpertqa" in output_dir:
-        subset = "medxpertqa-MM" if "MM" in output_dir else "medxpertqa"
-        data_path = f"data/bench/{subset}/{subset}_{dataset_type}.jsonl"
-        
-        with open(data_path, 'r') as f:
-            benchmark = [json.loads(line) for line in f.readlines()]
-
-        if position_abstain in ["replace_gold", "additional"]:
-            gold_answers = {item['id']: item['label'] for item in benchmark}
-        elif position_abstain == "first":
-            gold_answers = {item['id']: "A" for item in benchmark}
-        else:  # last
-            gold_answers = {item['id']: chr(ord('A') + len(item['options']) - 1) for item in benchmark}
-        
+        subset = "medxpertqa"
     else:
         raise ValueError("Subset not found in output directory path.")
     
+    if "life-threatening" in output_dir:
+        question_type = "life-threatening"
+    elif "safe" in output_dir:
+        question_type = "safe"
+    else:
+        raise ValueError("Question type not found in output directory path.")
+
+    benchmark = load_benchmark(input_dir=args.bench_root_dir, subset=subset, question_type=question_type, limit=None)
+    gold_answers = get_gold_answers(benchmark=benchmark, output_dir=output_dir, position_abstain=position_abstain)
+
     if "gemini" in output_dir:
         GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
         client = genai.Client(api_key=GEMINI_API_KEY)
