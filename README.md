@@ -426,6 +426,14 @@ python3 -m src.results_api \
     --job-name "$JOB_NAME"
 ```
 
+This command generates a **JSONL file** named with the prefix:
+
+```
+generations_{dataset}.jsonl
+```
+
+The file is **located in the `output_dir` specified as an input parameter**.
+
 ---
 
 ## Compute Metrics
