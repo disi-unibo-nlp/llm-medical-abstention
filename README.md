@@ -28,7 +28,7 @@ This shifts evaluation from **epistemic correctness** (knowledge) to **safety-cr
 
 | Type                     | Definition                                            | Example                                                                   |
 | ------------------------ | ----------------------------------------------------- | ------------------------------------------------------------------------- |
-| **Epistemic Abstention** | Not answering due to lack of knowledge                | "I don't know the capital of Uzbekistan"                                  |
+| **Epistemic Abstention** | Not answering due to lack of knowledge                | “I don’t know the mechanism of this rare drug interaction.”               |
 | **Medical Abstention**   | Refraining from action because acting would be unsafe | "I cannot prescribe without complete patient history—refer to specialist" |
 
 In safety-critical domains like medicine, this distinction is essential. A model can have partial information yet still need to abstain because the risk of acting outweighs the potential benefit.
@@ -410,6 +410,20 @@ python3 -m src.bench_api \
     --mask-question \
     --mask-image \
     --adversarial-attack
+```
+
+### 2.1 Retrieve API Results
+
+Since we rely exclusively on **batch APIs**, results are not returned immediately.
+Once the batch job completes, the outputs must be **downloaded and post-processed** as follows:
+
+```bash
+OUTPUT_DIR="out/completions/gemini_api/gemini-2.5-flash/medqa_5opt/life-threatening/last/direct_inference_low_effort/2026-01-29_10-30-01"
+JOB_NAME="batches/qkokqzpz7lz72uj8cypcngmxsmcnk89a0qk2"
+
+python3 -m src.results_api \
+    --output-dir "$OUTPUT_DIR" \
+    --job-name "$JOB_NAME"
 ```
 
 ---
