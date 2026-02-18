@@ -479,6 +479,13 @@ if __name__ == "__main__":
         if "direct_inference" in input_path:
             risk_level = risk_level + "-direct_inference"
 
+        if "2_shots" in input_path:
+            risk_level = risk_level + "-2_shots"
+            if "abstain-only" in input_path or "abstain_only" in input_path:
+                risk_level = risk_level + "-abstain-only"
+        if "4_shots" in input_path:
+            risk_level = risk_level + "-4_shots"
+
         probs = []
         labels = []
         for el in completions:
