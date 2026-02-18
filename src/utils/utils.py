@@ -2,8 +2,9 @@ import re
 import os
 import json
 from typing import Optional
-from src.utils.prompt import PROMPT_TEMPLATE, PROMPT_TEMPLATE_NON_REASONER, PROMPT_TEMPLATE_DIRECT
-
+from src.utils.prompt import PROMPT_TEMPLATE, PROMPT_TEMPLATE_NON_REASONER, PROMPT_TEMPLATE_DIRECT, PROMPT_TEMPLATE_FEW_SHOTS
+from src.utils.shots import SHOT_EXAMPLES_CORRECT, SHOT_EXAMPLES_ABSTAIN, SHOT_TEMPLATE
+import random
 class_labels = [
     "zero certainty",
     "minimal certainty",
@@ -29,6 +30,59 @@ conf2score = {
     "very high certainty": 0.85,
     "near-absolute certainty": 0.95
 }
+
+def format_shots(subset, n_shots, only_abstain=False):
+    if only_abstain:
+        
+        shots = []
+        for item_idx, item in enumerate(SHOT_EXAMPLES_ABSTAIN[subset][:n_shots]):
+            shot_options = format_options(item['options'], gold_answer="D", position="last") 
+            shot_str = SHOT_TEMPLATE.replace("<QUESTION>", item['question']) \
+                        .replace("<OPTIONS>", shot_options) \
+                        .replace("<THINKING>", item['text'].strip()) \
+                        .replace("<OUTPUT>", item['output'].strip()) 
+            shots.append("### Example {}:\n".format(item_idx + 1) + shot_str)
+
+        shots_str = "\n\n".join(shots)
+        
+        return shots_str.strip()
+
+    all_shots = []
+    for i in range(n_shots // 2):
+        shot_correct = SHOT_EXAMPLES_CORRECT[subset][i]
+        correct_answer = shot_correct['answer_idx']
+        options_letter = list(shot_correct['options'].keys())
+        # sample random one options that is different to the correct answer
+        options_letter = [opt for opt in options_letter if opt != correct_answer]
+        if options_letter:
+            if "D" in options_letter and subset in ["medqa_4opt", "medmcqa"]:
+                random_option = "D"
+            elif "J" in options_letter and subset == "medxpertqa":
+                random_option = "J"
+            else:
+                random.seed(42)  # set seed for reproducibility
+                random_option = random.choice(options_letter)
+
+        shot_correct_options = format_options(shot_correct['options'], gold_answer=random_option, position="replace_gold")
+        shot_correct_str = SHOT_TEMPLATE.replace("<QUESTION>", shot_correct['question']) \
+                        .replace("<OPTIONS>", shot_correct_options) \
+                        .replace("<THINKING>", shot_correct['text'].strip()) \
+                        .replace("<OUTPUT>", shot_correct['output'].strip()) 
+
+        shot_abstain = SHOT_EXAMPLES_ABSTAIN[subset][i]
+        
+            
+        shot_abstain_options = format_options(shot_abstain['options'], gold_answer="D", position="last")
+        shot_abstain_str = SHOT_TEMPLATE.replace("<QUESTION>", shot_abstain['question']) \
+                        .replace("<OPTIONS>", shot_abstain_options) \
+                        .replace("<THINKING>", shot_abstain['text'].strip()) \
+                        .replace("<OUTPUT>", shot_abstain['output'].strip()) 
+        all_shots.append("### Example {}:\n".format(i*2 + 1) + shot_correct_str.strip())
+        all_shots.append("### Example {}:\n".format(i*2 + 2) + shot_abstain_str.strip())
+
+    shots_str = "\n\n".join(all_shots)
+
+    return shots_str.strip()
 
 def parse_output(text: str, subset: str = "medxpertqa"):
     if subset in ["medqa_4opt", "medmcqa"]:
@@ -157,7 +211,7 @@ def format_options(options, gold_answer, position="last"):
     return " ".join(option_strs)
 
 
-def format_prompts(benchmark, subset, position_abstain="last", model_type="reasoner", mask_question=False, adversarial_attack=False, mask_emotion=False, direct_inference=False):
+def format_prompts(benchmark, subset, position_abstain="last", model_type="reasoner", mask_question=False, adversarial_attack=False, mask_emotion=False, direct_inference=False, n_shots=None):
     prompts = []
     for count, item in enumerate(benchmark):
         idx = item['id']
@@ -171,7 +225,17 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="reaso
         if subset in ["medqa_4opt", "medqa_5opt"]:
             gold_answer = item['answer_idx'] # e.g., "A", "B", "C", "D"
             options = format_options(item['options'], gold_answer=gold_answer, position=position_abstain)
-            if direct_inference:
+            if n_shots is not None:
+                assert n_shots > 0, "n_shots should be greater than 0"
+                shots = format_shots(subset, n_shots)
+                #prompt = prompt.replace("<QUESTION>", item['question'].strip()).replace("<OPTIONS>", options)
+                prompt = PROMPT_TEMPLATE_FEW_SHOTS.replace("<SHOTS>", shots).replace("<QUESTION>", item['question'].strip()).replace("<OPTIONS>", options)
+                # if n_shots == 4:
+                #     prompt = PROMPT_TEMPLATE_FOUR_SHOTS.replace("<QUESTION>", item['question'].strip()).replace("<OPTIONS>", options)
+                # # if model_type == "reasoner":
+                #     prompt = prompt.replace("Final Answer: (<OPTION LETTER>)", "The final answer is \\boxed{<OPTION LETTER>}.")
+            
+            elif direct_inference:
                 prompt = PROMPT_TEMPLATE_DIRECT.replace("<QUESTION>", item['question'].strip()).replace("<OPTIONS>", options)
                 if model_type == "reasoner":
                     prompt = prompt.replace("Final Answer: (<OPTION LETTER>)", "The final answer is \\boxed{<OPTION LETTER>}.")
@@ -198,7 +262,11 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="reaso
         elif "medxpertqa" in subset:
             options = format_options(item['options'], gold_answer=item['label'], position=position_abstain)
             
-            if direct_inference:
+            if n_shots is not None:
+                assert n_shots > 0, "n_shots should be greater than 0"
+                shots = format_shots(subset, n_shots)
+                prompt = PROMPT_TEMPLATE_FEW_SHOTS.replace("<SHOTS>", shots).replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
+            elif direct_inference:
                 prompt = PROMPT_TEMPLATE_DIRECT.replace("<QUESTION>", item['question'].split("Answer Choices:")[0].strip()).replace("<OPTIONS>", options)
                 if model_type == "reasoner":
                     prompt = prompt.replace("Final Answer: (<OPTION LETTER>)", "The final answer is \\boxed{<OPTION LETTER>}.")
@@ -251,8 +319,11 @@ def format_prompts(benchmark, subset, position_abstain="last", model_type="reaso
 
     return prompts   
 
-def setup_output_dir(output_dir: str, api_dir: str, model_name: str, subset: str, question_type: str, position_abstain: str, now_dir: str, mask_question: bool, mask_image: bool, adversarial_attack: bool, mask_emotion: bool, direct_inference: bool, low_effort: bool = False):
+def setup_output_dir(output_dir: str, api_dir: str, model_name: str, subset: str, question_type: str, position_abstain: str, now_dir: str, mask_question: bool, mask_image: bool, adversarial_attack: bool, mask_emotion: bool, direct_inference: bool, low_effort: bool = False, n_shots: Optional[int] = None):
     output_dir = f"{output_dir}/{api_dir}/{model_name}/{subset}/{question_type}/{position_abstain}"
+
+    if n_shots is not None:
+        output_dir = output_dir + f"/{n_shots}_shots"
 
     if mask_question and mask_image:
         output_dir = output_dir + f"/mask_question_and_image/{now_dir}"
