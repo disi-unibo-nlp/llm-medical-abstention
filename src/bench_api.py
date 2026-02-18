@@ -199,7 +199,7 @@ def create_batch_openai(benchmark, subset, output_dir, reasoning_effort="medium"
 
 
 
-def create_batch_together(benchmark, subset, output_dir, reasoning_effort="medium", model_name_path=None, limit=None, question_type="life-threatening", position_abstain="last", mask_question=False, adversarial_attack=False, mask_emotion=False, direct_inference=False):
+def create_batch_together(benchmark, subset, output_dir, reasoning_effort="medium", model_name_path=None, limit=None, question_type="life-threatening", position_abstain="last", mask_question=False, adversarial_attack=False, mask_emotion=False, direct_inference=False, n_shots=-1):
     # Create a sample JSONL file
 
     # Create a sample JSONL file
@@ -208,7 +208,7 @@ def create_batch_together(benchmark, subset, output_dir, reasoning_effort="mediu
 
     model_type = "instruct" if "instruct" in model_name.lower() else "reasoner"
     
-    prompts = format_prompts(benchmark, subset, position_abstain=position_abstain, model_type=model_type, mask_question=mask_question, adversarial_attack=adversarial_attack, mask_emotion=mask_emotion, direct_inference=direct_inference)
+    prompts = format_prompts(benchmark, subset, position_abstain=position_abstain, model_type=model_type, mask_question=mask_question, adversarial_attack=adversarial_attack, mask_emotion=mask_emotion, direct_inference=direct_inference, n_shots=n_shots)
 
     with open(f"{output_dir}/batch_togther_{model_name}.jsonl", "w") as f:
         for id_prompt, prompt in prompts:
@@ -341,6 +341,14 @@ if __name__ == "__main__":
         help="Low effort reasoning (for OpenAI and Together models only)."
     )
 
+    parser.add_argument(
+        "--n_shots",
+        type=int,
+        default=-1,
+        choices=[-1, 2, 4],
+        help="Number of shots for the evaluation."
+    )
+
     args = parser.parse_args()
 
 
@@ -363,6 +371,7 @@ if __name__ == "__main__":
     mask_emotion = args.mask_emotion
     direct_inference = args.direct_inference
     low_effort = args.low_effort
+    n_shots = args.n_shots
 
     if swap_options:
         question_type += "-swap"
@@ -387,7 +396,8 @@ if __name__ == "__main__":
         adversarial_attack=adversarial_attack,
         mask_emotion=mask_emotion,
         direct_inference=direct_inference,
-        low_effort=low_effort
+        low_effort=low_effort,
+        n_shots=n_shots
     )
 
     os.makedirs(output_dir, exist_ok=True)
@@ -458,5 +468,6 @@ if __name__ == "__main__":
             mask_question=mask_question,
             adversarial_attack=adversarial_attack,
             mask_emotion=mask_emotion,
-            direct_inference=direct_inference
+            direct_inference=direct_inference,
+            n_shots=n_shots
         )
