@@ -1,7 +1,7 @@
 # LLMs (Almost) Never Abstain Under Medical Uncertainty
 
 🔗 **Paper**: [*LLMs (Almost) Never Abstain Under Medical Uncertainty*](https://aclanthology.org/2026.acl-long.1365/)  
-🔗 **HF repository**: [MedQAbstain](https://huggingface.co/datasets/disi-unibo-nlp/MedQAbstain)  
+🤗 **HF repository**: [MedQAbstain](https://huggingface.co/datasets/disi-unibo-nlp/MedQAbstain)  
 📓 **Example notebook**: [Google Colab Notebook](https://colab.research.google.com/drive/1xCtUUFFjJzcsdbDileiCR2yhFZ5AcOqf?usp=sharing)
 
 This repository contains the code and data for our paper **"LLMs (Almost) Never Abstain Under Medical Uncertainty"** accepted at **ACL 2026**.
