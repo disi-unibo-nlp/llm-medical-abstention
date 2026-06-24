@@ -1,5 +1,9 @@
 # LLMs (Almost) Never Abstain Under Medical Uncertainty
 
+🔗 **Paper**: [*LLMs (Almost) Never Abstain Under Medical Uncertainty*](https://aclanthology.org/2026.acl-long.1365/)  
+🔗 **HF repository**: [MedQAbstain](https://huggingface.co/datasets/disi-unibo-nlp/MedQAbstain)  
+📓 **Example notebook**: [Google Colab Notebook](https://colab.research.google.com/drive/1xCtUUFFjJzcsdbDileiCR2yhFZ5AcOqf?usp=sharing)
+
 This repository contains the code and data for our paper **"LLMs (Almost) Never Abstain Under Medical Uncertainty"** accepted at **ACL 2026**.
 
 ## Overview
@@ -70,7 +74,35 @@ pip install -r requirements.txt
 
 ## Data
 
-The final datasets used for model evaluation are available for download as a ZIP archive at the following link: [[**Download Data**](https://drive.google.com/file/d/1KZAaMD-EbJlgNfddXLKYy3VkO2NU610P/view?usp=sharing)]
+There are two primary ways to access the **MedQAbstain** dataset: directly through HuggingFace (recommended for easy integration) or by downloading the local archive for use with this repository's evaluation scripts.
+
+### Option 1: HuggingFace (Recommended)
+
+The easiest way to load the dataset for your own pipelines is via the HuggingFace `datasets` library. You can find the full dataset repository here:
+
+🔗 **[MedQAbstain on HuggingFace](https://huggingface.co/datasets/disi-unibo-nlp/MedQAbstain)**
+
+If you specifically need to download the images archive (e.g., for MedXpertQA-MM), you can easily do so using the `huggingface_hub` library:
+
+```python
+from huggingface_hub import hf_hub_download
+
+zip_path = hf_hub_download(
+    repo_id="disi-unibo-nlp/MedQAbstain",
+    repo_type="dataset",
+    filename="images.zip",
+    local_dir="./"
+)
+
+```
+
+```
+!unzip ./images.zip
+```
+
+### Option 2: Local Download & Setup
+If you prefer to run the exact evaluation scripts provided in this repository, you should download the final preprocessed datasets as a ZIP archive:
+[**Download Data**](https://drive.google.com/file/d/1KZAaMD-EbJlgNfddXLKYy3VkO2NU610P/view?usp=sharing)
 
 After extracting the archive, place the resulting `data/` directory in the **root of the project**.
 
