@@ -568,3 +568,39 @@ python3 process_data/swap_options.py \
 ```
 
 ---
+
+
+### Contact
+
+For questions, feedback, or collaborations, feel free to reach out:
+
+- **Alessio Cocchieri** — a.cocchieri@unibo.it  
+- **Luca Ragazzi** — l.ragazzi@unibo.it
+
+
+### Citation
+
+If you use **MedQAbstain** in your research, please cite our paper:
+
+```bibtex
+@inproceedings{cocchieri-etal-2026-llms,
+    title = "{LLM}s (Almost) Never Abstain Under Medical Uncertainty",
+    author = "Cocchieri, Alessio  and
+      Ragazzi, Luca  and
+      Tagliavini, Giuseppe  and
+      Moro, Gianluca",
+    editor = "Liakata, Maria  and
+      Moreira, Viviane P.  and
+      Zhang, Jiajun  and
+      Jurgens, David",
+    booktitle = "Proceedings of the 64th Annual Meeting of the {A}ssociation for {C}omputational {L}inguistics (Volume 1: Long Papers)",
+    month = jul,
+    year = "2026",
+    address = "San Diego, California, United States",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2026.acl-long.1365/",
+    pages = "29573--29613",
+    ISBN = "979-8-89176-390-6",
+    abstract = "Medical multiple-choice question answering (MCQA) benchmarks implicitly assume that large language models (LLMs) should always commit to an answer. However, in clinical practice, uncertainty is pervasive and abstaining is often the safest action. We introduce MedQAbstain, a benchmark explicitly designed to evaluate medical abstention under uncertainty. MedQAbstain repurposes standard medical MCQA datasets by removing the gold answer and introducing an explicit ``I abstain'' option, framed as a safety-critical decision with clinical consequences. The benchmark supports systematic analysis across abstention regimes, distractor complexity, and input modalities, and elicits self-reported model confidence to study calibration. Across all settings, we find that state-of-the-art LLMs systematically overcommit, rarely abstaining even when the question itself is hidden. These results reveal a fundamental mismatch between LLM behavior and clinical norms, highlighting abstention as a critical but overlooked dimension of medical decision-making evaluation."
+}
+```
