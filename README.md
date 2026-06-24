@@ -1,6 +1,6 @@
 # LLMs (Almost) Never Abstain Under Medical Uncertainty
 
-This repository contains the code and data for our paper **"LLMs (Almost) Never Abstain Under Medical Uncertainty"**.
+This repository contains the code and data for our paper **"LLMs (Almost) Never Abstain Under Medical Uncertainty"** accepted at **ACL 2026**.
 
 ## Overview
 
